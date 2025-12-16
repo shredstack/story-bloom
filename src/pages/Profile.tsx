@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { useChild } from '../context/ChildContext';
 import { Button, Input, Select, TextArea, TagInput, Card } from '../components/ui';
-import { READING_LEVELS, type Child } from '../types';
+import { READING_LEVELS, type Child, type ReadingLevel } from '../types';
 
 export function Profile() {
   const navigate = useNavigate();
@@ -17,7 +17,7 @@ export function Profile() {
 
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
-  const [readingLevel, setReadingLevel] = useState(READING_LEVELS[1]);
+  const [readingLevel, setReadingLevel] = useState<ReadingLevel>(READING_LEVELS[1]);
   const [favoriteThings, setFavoriteThings] = useState<string[]>([]);
   const [parentSummary, setParentSummary] = useState('');
 
@@ -34,7 +34,7 @@ export function Profile() {
     setEditingChild(child);
     setName(child.name);
     setAge(child.age.toString());
-    setReadingLevel(child.reading_level);
+    setReadingLevel(child.reading_level as ReadingLevel);
     setFavoriteThings(child.favorite_things);
     setParentSummary(child.parent_summary || '');
     setIsCreating(false);
@@ -162,7 +162,7 @@ export function Profile() {
               <Select
                 label="Reading Level"
                 value={readingLevel}
-                onChange={(e) => setReadingLevel(e.target.value)}
+                onChange={(e) => setReadingLevel(e.target.value as ReadingLevel)}
                 options={READING_LEVELS.map(level => ({ value: level, label: level }))}
               />
 
