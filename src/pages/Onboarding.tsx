@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChild } from '../context/ChildContext';
 import { Button, Input, Select, TextArea, TagInput, Card } from '../components/ui';
-import { READING_LEVELS } from '../types';
+import { READING_LEVELS, type ReadingLevel } from '../types';
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -14,7 +14,7 @@ export function Onboarding() {
 
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
-  const [readingLevel, setReadingLevel] = useState(READING_LEVELS[1]);
+  const [readingLevel, setReadingLevel] = useState<ReadingLevel>(READING_LEVELS[1]);
   const [favoriteThings, setFavoriteThings] = useState<string[]>([]);
   const [parentSummary, setParentSummary] = useState('');
 
@@ -121,7 +121,7 @@ export function Onboarding() {
               <Select
                 label="Reading Level"
                 value={readingLevel}
-                onChange={(e) => setReadingLevel(e.target.value)}
+                onChange={(e) => setReadingLevel(e.target.value as ReadingLevel)}
                 options={READING_LEVELS.map(level => ({ value: level, label: level }))}
               />
             </div>
