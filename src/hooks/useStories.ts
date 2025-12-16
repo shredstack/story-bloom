@@ -138,15 +138,30 @@ export function useGenerateStory() {
         }),
       });
 
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.error('API returned non-JSON response:', {
+          status: response.status,
+          contentType,
+          url: response.url,
+        });
+        throw new Error(
+          'API endpoint not available. Make sure you are running "vercel dev" instead of "npm run dev" for local development.'
+        );
+      }
+
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('API error response:', errorData);
         throw new Error(errorData.error || 'Failed to generate story');
       }
 
       const data: StoryGenerationResponse = await response.json();
       return data;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      console.error('Story generation failed:', errorMessage);
+      setError(errorMessage);
       return null;
     } finally {
       setGenerating(false);
