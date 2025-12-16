@@ -124,10 +124,18 @@ A personalized children's reading app that generates custom stories using AI. St
      USING (child_id IN (SELECT id FROM children WHERE user_id = auth.uid()));
    ```
 
+6. Install and link the Vercel CLI (one time only):
+  ```bash
+  npm i -g vercel
+  vercel link
+  ```
+
 5. Start the development server:
    ```bash
    npm run dev
    ```
+  This will start the Vercel dev server which handles both the frontend and API routes. You'll now see console logs from your API functions in the terminal where you run npm run dev.
+  Or to test serverless functions locally, use `npm run dev:vercel` or `vercel dev`.
 
 6. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
