@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Button, Input, Select, TextArea, TagInput, Card } from '../components/ui';
 import { PhysicalCharacteristicsForm, type PhysicalCharacteristicsData } from '../components/ui/PhysicalCharacteristicsForm';
 import { uploadProfileImage } from '../hooks/useProfileImage';
-import { READING_LEVELS, type ReadingLevel } from '../types';
+import { READING_LEVELS, type ReadingLevel, type FontSize } from '../types';
 
 export function Onboarding() {
   const navigate = useNavigate();
@@ -19,6 +19,7 @@ export function Onboarding() {
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>(READING_LEVELS[1]);
+  const [defaultTextSize, setDefaultTextSize] = useState<FontSize>('medium');
   const [favoriteThings, setFavoriteThings] = useState<string[]>([]);
   const [parentSummary, setParentSummary] = useState('');
   const [physicalCharacteristics, setPhysicalCharacteristics] = useState<PhysicalCharacteristicsData>({
@@ -87,7 +88,7 @@ export function Onboarding() {
       reading_level: readingLevel,
       favorite_things: favoriteThings,
       parent_summary: parentSummary.trim() || null,
-      default_text_size: 'medium',
+      default_text_size: defaultTextSize,
       profile_image_url: profileImageUrl,
       profile_image_storage_path: profileImageStoragePath,
       skin_tone: physicalCharacteristics.skinTone,
@@ -163,6 +164,17 @@ export function Onboarding() {
                 value={readingLevel}
                 onChange={(e) => setReadingLevel(e.target.value as ReadingLevel)}
                 options={READING_LEVELS.map(level => ({ value: level, label: level }))}
+              />
+              <Select
+                label="Default Text Size"
+                value={defaultTextSize}
+                onChange={(e) => setDefaultTextSize(e.target.value as FontSize)}
+                options={[
+                  { value: 'small', label: 'Small (A)' },
+                  { value: 'medium', label: 'Medium (A+)' },
+                  { value: 'large', label: 'Large (A++)' },
+                  { value: 'extra-large', label: 'Extra Large (A+++)' },
+                ]}
               />
             </div>
           )}
