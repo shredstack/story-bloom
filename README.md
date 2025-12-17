@@ -53,6 +53,8 @@ A personalized children's reading app that generates custom stories using AI. St
    VITE_SUPABASE_URL=your_supabase_project_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
    VITE_ANTHROPIC_API_KEY=your_anthropic_api_key
+   OPENAI_API_KEY=your_openai_api_key
+   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
    ```
 
 4. Set up your Supabase database by running the following SQL in the Supabase SQL editor:

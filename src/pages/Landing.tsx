@@ -57,12 +57,12 @@ export function Landing() {
                   🌟
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-gray-800">Emma's Adventure</h3>
-                  <p className="text-sm text-gray-500">Personalized for Emma, age 6</p>
+                  <h3 className="font-bold text-lg text-gray-800">Peta's Adventure</h3>
+                  <p className="text-sm text-gray-500">Personalized for Peta, age 9</p>
                 </div>
               </div>
               <p className="text-gray-700 leading-relaxed">
-                "Once upon a time, in a garden full of rainbow flowers, there lived a curious butterfly named Emma. She loved exploring and making new friends..."
+                "Once upon a time, in a garden full of rainbow flowers, there lived a curious butterfly named Peta. She loved exploring and making new friends..."
               </p>
               <div className="flex gap-2">
                 <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">Butterflies</span>
@@ -113,7 +113,7 @@ export function Landing() {
 
       <footer className="bg-gray-800 text-white py-8">
         <div className="max-w-6xl mx-auto px-4 text-center">
-          <p className="text-gray-400">Made with love for little readers everywhere</p>
+          <p className="text-gray-400">Made with &#10084;&#xfe0f; for little readers everywhere and inspired by my daughter Dallas</p>
         </div>
       </footer>
     </div>
