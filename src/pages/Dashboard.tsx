@@ -252,27 +252,52 @@ export function Dashboard() {
               </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {recentStories.map(story => (
-                <Card
-                  key={story.id}
-                  hoverable
-                  onClick={() => navigate(`/story/${story.id}`)}
-                  className="cursor-pointer"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-bold text-gray-800 line-clamp-1">{story.title}</h3>
-                    {story.is_favorited && (
-                      <svg className="w-5 h-5 text-accent-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                      </svg>
+              {recentStories.map(story => {
+                const thumbnailUrl = story.illustrations?.[0]?.imageUrl || story.source_illustration_url;
+                return (
+                  <Card
+                    key={story.id}
+                    hoverable
+                    onClick={() => navigate(`/story/${story.id}`)}
+                    className="cursor-pointer"
+                  >
+                    {thumbnailUrl && (
+                      <div className="relative -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-xl">
+                        <img
+                          src={thumbnailUrl}
+                          alt={`Illustration for ${story.title}`}
+                          className="w-full h-28 object-cover"
+                        />
+                        {story.is_favorited && (
+                          <div className="absolute top-2 right-2 bg-white/90 rounded-full p-1.5 shadow-sm">
+                            <svg className="w-4 h-4 text-accent-500" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
                     )}
-                  </div>
-                  <p className="text-gray-600 text-sm line-clamp-2">{story.content.slice(0, 100)}...</p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {new Date(story.created_at).toLocaleDateString()}
-                  </p>
-                </Card>
-              ))}
+                    <div className={`flex items-start justify-between ${thumbnailUrl ? '' : 'mb-2'}`}>
+                      <h3 className="font-bold text-gray-800 line-clamp-1">{story.title}</h3>
+                      {!thumbnailUrl && story.is_favorited && (
+                        <svg className="w-5 h-5 text-accent-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-gray-600 text-sm line-clamp-2 mt-1">{story.content.slice(0, 100)}...</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(story.created_at).toLocaleString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}
+                    </p>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
@@ -286,22 +311,41 @@ export function Dashboard() {
               </Button>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {favoriteStories.map(story => (
-                <Card
-                  key={story.id}
-                  hoverable
-                  onClick={() => navigate(`/story/${story.id}`)}
-                  className="cursor-pointer border-2 border-accent-100"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <h3 className="font-bold text-gray-800 line-clamp-1">{story.title}</h3>
-                    <svg className="w-5 h-5 text-accent-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-gray-600 text-sm line-clamp-2">{story.content.slice(0, 100)}...</p>
-                </Card>
-              ))}
+              {favoriteStories.map(story => {
+                const thumbnailUrl = story.illustrations?.[0]?.imageUrl || story.source_illustration_url;
+                return (
+                  <Card
+                    key={story.id}
+                    hoverable
+                    onClick={() => navigate(`/story/${story.id}`)}
+                    className="cursor-pointer border-2 border-accent-100"
+                  >
+                    {thumbnailUrl && (
+                      <div className="relative -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-xl">
+                        <img
+                          src={thumbnailUrl}
+                          alt={`Illustration for ${story.title}`}
+                          className="w-full h-28 object-cover"
+                        />
+                        <div className="absolute top-2 right-2 bg-white/90 rounded-full p-1.5 shadow-sm">
+                          <svg className="w-4 h-4 text-accent-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                        </div>
+                      </div>
+                    )}
+                    <div className={`flex items-start justify-between ${thumbnailUrl ? '' : 'mb-2'}`}>
+                      <h3 className="font-bold text-gray-800 line-clamp-1">{story.title}</h3>
+                      {!thumbnailUrl && (
+                        <svg className="w-5 h-5 text-accent-500 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                      )}
+                    </div>
+                    <p className="text-gray-600 text-sm line-clamp-2 mt-1">{story.content.slice(0, 100)}...</p>
+                  </Card>
+                );
+              })}
             </div>
           </div>
         )}
