@@ -99,12 +99,33 @@ export function useStories(childId: string | undefined) {
     return true;
   };
 
+  const updateStoryIllustrations = async (
+    storyId: string,
+    illustrations: Illustration[]
+  ): Promise<boolean> => {
+    const { error } = await supabase
+      .from('stories')
+      .update({ illustrations })
+      .eq('id', storyId);
+
+    if (error) {
+      console.error('Error updating story illustrations:', error);
+      return false;
+    }
+
+    setStories(prev =>
+      prev.map(s => s.id === storyId ? { ...s, illustrations } : s)
+    );
+    return true;
+  };
+
   return {
     stories,
     loading,
     createStory,
     toggleFavorite,
     deleteStory,
+    updateStoryIllustrations,
     refreshStories: fetchStories,
   };
 }

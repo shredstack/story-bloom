@@ -10,6 +10,7 @@ import { Dashboard } from './pages/Dashboard';
 import { StoryReader } from './pages/StoryReader';
 import { Library } from './pages/Library';
 import { Profile } from './pages/Profile';
+import { CustomIllustrations } from './pages/CustomIllustrations';
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -96,6 +97,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Profile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/illustrations"
+        element={
+          <ProtectedRoute>
+            <CustomIllustrations />
           </ProtectedRoute>
         }
       />

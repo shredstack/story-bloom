@@ -13,6 +13,17 @@ export interface Illustration {
   description: string;
   position: number;
   imageUrl?: string;
+  customIllustrationId?: string;
+}
+
+export interface CustomIllustration {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  image_url: string;
+  storage_path: string;
+  created_at: string;
 }
 
 export interface Story {
