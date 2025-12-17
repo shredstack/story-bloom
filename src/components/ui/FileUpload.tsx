@@ -6,6 +6,70 @@ interface FileUploadProps {
   accept?: string;
   error?: string;
   maxSizeMB?: number;
+  maxWidth?: number;
+  quality?: number;
+}
+
+// Compress image using canvas
+async function compressImage(
+  file: File,
+  maxWidth: number,
+  quality: number
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    img.onload = () => {
+      // Calculate new dimensions
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+
+      // Draw and compress
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error('Could not compress image'));
+            return;
+          }
+
+          // Create new file with same name but compressed
+          const compressedFile = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+
+          resolve(compressedFile);
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = () => reject(new Error('Could not load image'));
+
+    // Load the image
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function FileUpload({
@@ -14,21 +78,20 @@ export function FileUpload({
   accept = 'image/*',
   error,
   maxSizeMB = 5,
+  maxWidth = 1200,
+  quality = 0.8,
 }: FileUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [originalSize, setOriginalSize] = useState<number | null>(null);
+  const [compressedSize, setCompressedSize] = useState<number | null>(null);
 
-  const validateAndSetFile = (file: File) => {
+  const validateAndSetFile = async (file: File) => {
     setFileError(null);
-
-    // Check file size
-    const maxBytes = maxSizeMB * 1024 * 1024;
-    if (file.size > maxBytes) {
-      setFileError(`File size must be less than ${maxSizeMB}MB`);
-      return;
-    }
+    setOriginalSize(file.size);
 
     // Check file type
     if (!file.type.startsWith('image/')) {
@@ -36,14 +99,41 @@ export function FileUpload({
       return;
     }
 
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setPreview(e.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    // Check initial file size (before compression)
+    const maxBytes = maxSizeMB * 1024 * 1024;
+    if (file.size > maxBytes * 2) {
+      // Allow up to 2x max size since we'll compress
+      setFileError(`File size must be less than ${maxSizeMB * 2}MB`);
+      return;
+    }
 
-    onFileSelect(file);
+    setIsCompressing(true);
+
+    try {
+      // Compress the image
+      const compressedFile = await compressImage(file, maxWidth, quality);
+      setCompressedSize(compressedFile.size);
+
+      // Check compressed size
+      if (compressedFile.size > maxBytes) {
+        setFileError(`Compressed image is still too large. Try a smaller image.`);
+        setIsCompressing(false);
+        return;
+      }
+
+      // Create preview from compressed file
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(compressedFile);
+
+      onFileSelect(compressedFile);
+    } catch (err) {
+      setFileError('Failed to process image. Please try another file.');
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -80,9 +170,17 @@ export function FileUpload({
   const clearPreview = () => {
     setPreview(null);
     setFileError(null);
+    setOriginalSize(null);
+    setCompressedSize(null);
     if (inputRef.current) {
       inputRef.current.value = '';
     }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   const displayError = error || fileError;
@@ -101,13 +199,20 @@ export function FileUpload({
         onChange={handleChange}
         className="hidden"
       />
-      {preview ? (
-        <div className="relative">
-          <img
-            src={preview}
-            alt="Preview"
-            className="w-full h-48 object-cover rounded-xl border-2 border-gray-200"
-          />
+      {isCompressing ? (
+        <div className="w-full h-48 rounded-xl border-2 border-gray-200 bg-gray-50 flex flex-col items-center justify-center gap-3">
+          <div className="w-10 h-10 rounded-full border-4 border-primary-200 border-t-primary-500 animate-spin" />
+          <p className="text-sm text-gray-600">Compressing image...</p>
+        </div>
+      ) : preview ? (
+        <div className="relative rounded-xl border-2 border-gray-200 overflow-hidden bg-gray-50">
+          <div className="flex items-center justify-center p-4">
+            <img
+              src={preview}
+              alt="Preview"
+              className="max-w-full max-h-64 object-contain rounded-lg"
+            />
+          </div>
           <button
             type="button"
             onClick={clearPreview}
@@ -117,6 +222,18 @@ export function FileUpload({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+          {originalSize && compressedSize && (
+            <div className="px-4 py-2 bg-gray-100 border-t border-gray-200">
+              <p className="text-xs text-gray-500 text-center">
+                Compressed: {formatFileSize(originalSize)} → {formatFileSize(compressedSize)}
+                {originalSize > compressedSize && (
+                  <span className="text-green-600 ml-1">
+                    ({Math.round((1 - compressedSize / originalSize) * 100)}% smaller)
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div
@@ -142,7 +259,7 @@ export function FileUpload({
               Drop an image here or click to upload
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              PNG, JPG, GIF up to {maxSizeMB}MB
+              PNG, JPG, GIF up to {maxSizeMB}MB (auto-compressed)
             </p>
           </div>
         </div>
