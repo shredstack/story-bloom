@@ -1,4 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useChild } from '../../context/ChildContext';
 import { Button } from '../ui';
@@ -7,11 +8,23 @@ export function Header() {
   const { user, signOut } = useAuth();
   const { children, selectedChild, selectChild } = useChild();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
+    setMobileMenuOpen(false);
     await signOut();
     navigate('/');
   };
+
+  const navLinks = [
+    { to: '/dashboard', label: 'Dashboard' },
+    { to: '/library', label: 'Library' },
+    { to: '/illustrations', label: 'Illustrations' },
+    { to: '/profile', label: 'Profiles' },
+  ];
+
+  const isActiveLink = (path: string) => location.pathname === path;
 
   return (
     <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-50">
@@ -28,45 +41,137 @@ export function Header() {
         </Link>
 
         {user && (
-          <div className="flex items-center gap-4">
-            {children.length > 1 && (
-              <select
-                value={selectedChild?.id || ''}
-                onChange={(e) => {
-                  const child = children.find(c => c.id === e.target.value);
-                  if (child) selectChild(child);
-                }}
-                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-primary-400"
-              >
-                {children.map(child => (
-                  <option key={child.id} value={child.id}>
-                    {child.name}
-                  </option>
+          <>
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-4">
+              {children.length > 1 && (
+                <select
+                  value={selectedChild?.id || ''}
+                  onChange={(e) => {
+                    const child = children.find(c => c.id === e.target.value);
+                    if (child) selectChild(child);
+                  }}
+                  className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-primary-400"
+                >
+                  {children.map(child => (
+                    <option key={child.id} value={child.id}>
+                      {child.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <nav className="flex items-center gap-2">
+                {navLinks.map(link => (
+                  <Link key={link.to} to={link.to}>
+                    <Button variant="ghost" size="sm">{link.label}</Button>
+                  </Link>
                 ))}
-              </select>
-            )}
+              </nav>
 
-            <nav className="flex items-center gap-2">
-              <Link to="/dashboard">
-                <Button variant="ghost" size="sm">Dashboard</Button>
-              </Link>
-              <Link to="/library">
-                <Button variant="ghost" size="sm">Library</Button>
-              </Link>
-              <Link to="/illustrations">
-                <Button variant="ghost" size="sm">Illustrations</Button>
-              </Link>
-              <Link to="/profile">
-                <Button variant="ghost" size="sm">Profiles</Button>
-              </Link>
-            </nav>
+              <Button variant="outline" size="sm" onClick={handleSignOut}>
+                Sign Out
+              </Button>
+            </div>
 
-            <Button variant="outline" size="sm" onClick={handleSignOut}>
-              Sign Out
-            </Button>
-          </div>
+            {/* Mobile Hamburger Button */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? (
+                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
+          </>
         )}
       </div>
+
+      {/* Mobile Menu */}
+      {user && mobileMenuOpen && (
+        <div className="md:hidden border-t border-gray-200 bg-white/95 backdrop-blur-sm">
+          <div className="px-4 py-3 space-y-3">
+            {/* Child Selector for Mobile */}
+            {children.length > 1 && (
+              <div className="pb-3 border-b border-gray-100">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Reading as</label>
+                <select
+                  value={selectedChild?.id || ''}
+                  onChange={(e) => {
+                    const child = children.find(c => c.id === e.target.value);
+                    if (child) selectChild(child);
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-primary-400"
+                >
+                  {children.map(child => (
+                    <option key={child.id} value={child.id}>
+                      {child.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Navigation Links */}
+            <nav className="space-y-1">
+              {navLinks.map(link => (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-colors ${
+                    isActiveLink(link.to)
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {link.label === 'Dashboard' && (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    </svg>
+                  )}
+                  {link.label === 'Library' && (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                    </svg>
+                  )}
+                  {link.label === 'Illustrations' && (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                  {link.label === 'Profiles' && (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  )}
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+
+            {/* Sign Out Button */}
+            <div className="pt-3 border-t border-gray-100">
+              <button
+                onClick={handleSignOut}
+                className="flex items-center gap-3 w-full px-3 py-3 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
