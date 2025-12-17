@@ -163,9 +163,9 @@ export function useGenerateStory() {
     setGenerating(true);
     setError(null);
 
-    // Use AbortController for timeout - 90 seconds to account for AI generation time
+    // Use AbortController for timeout - 180 seconds to account for AI + DALL-E generation time
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
+    const timeoutId = setTimeout(() => controller.abort(), 180000);
 
     try {
       const response = await fetch('/api/generate-story', {
