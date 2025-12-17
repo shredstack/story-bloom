@@ -179,46 +179,6 @@ Respond in this exact JSON format:
           content: prompt,
         },
       ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'story_response',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              title: {
-                type: 'string',
-                description: 'The title of the story'
-              },
-              content: {
-                type: 'string',
-                description: 'The full story text'
-              },
-              illustrations: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    description: {
-                      type: 'string',
-                      description: 'A detailed scene description for illustration'
-                    },
-                    position: {
-                      type: 'number',
-                      description: 'Character index where the illustration should appear'
-                    }
-                  },
-                  required: ['description', 'position'],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ['title', 'content', 'illustrations'],
-            additionalProperties: false
-          }
-        }
-      }
     });
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
