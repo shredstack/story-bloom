@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Story, StoryGenerationResponse, Illustration } from '../types';
+import type { Story, StoryGenerationResponse, Illustration, SkinTone, HairColor, EyeColor, Gender, Pronouns } from '../types';
+
+export interface PhysicalCharacteristicsForApi {
+  skinTone: SkinTone | null;
+  hairColor: HairColor | null;
+  eyeColor: EyeColor | null;
+  gender: Gender | null;
+  pronouns: Pronouns | null;
+}
 
 export function useStories(childId: string | undefined) {
   const [stories, setStories] = useState<Story[]>([]);
@@ -38,7 +46,8 @@ export function useStories(childId: string | undefined) {
     title: string,
     content: string,
     customPrompt: string | null,
-    illustrations: Illustration[] | null
+    illustrations: Illustration[] | null,
+    sourceIllustrationUrl: string | null = null
   ): Promise<Story | null> => {
     if (!childId) return null;
 
@@ -51,6 +60,7 @@ export function useStories(childId: string | undefined) {
         custom_prompt: customPrompt,
         illustrations,
         is_favorited: false,
+        source_illustration_url: sourceIllustrationUrl,
       }])
       .select()
       .single();
@@ -140,7 +150,9 @@ export function useGenerateStory() {
     readingLevel: string,
     favoriteThings: string[],
     parentSummary: string | null,
-    customPrompt: string | null
+    customPrompt: string | null,
+    sourceIllustrationUrl: string | null = null,
+    physicalCharacteristics: PhysicalCharacteristicsForApi | null = null
   ): Promise<StoryGenerationResponse | null> => {
     setGenerating(true);
     setError(null);
@@ -156,6 +168,8 @@ export function useGenerateStory() {
           favoriteThings,
           parentSummary,
           customPrompt,
+          sourceIllustrationUrl,
+          physicalCharacteristics,
         }),
       });
 

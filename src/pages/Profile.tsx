@@ -2,11 +2,20 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { useChild } from '../context/ChildContext';
+import { useAuth } from '../context/AuthContext';
 import { Button, Input, Select, TextArea, TagInput, Card } from '../components/ui';
-import { READING_LEVELS, type Child, type ReadingLevel } from '../types';
+import { PhysicalCharacteristicsForm, type PhysicalCharacteristicsData } from '../components/ui/PhysicalCharacteristicsForm';
+import { uploadProfileImage, deleteProfileImage } from '../hooks/useProfileImage';
+import {
+  READING_LEVELS,
+  type Child,
+  type ReadingLevel,
+  type FontSize,
+} from '../types';
 
 export function Profile() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { children, selectedChild, selectChild, createChild, updateChild, deleteChild } = useChild();
 
   const [editingChild, setEditingChild] = useState<Child | null>(null);
@@ -20,6 +29,17 @@ export function Profile() {
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>(READING_LEVELS[1]);
   const [favoriteThings, setFavoriteThings] = useState<string[]>([]);
   const [parentSummary, setParentSummary] = useState('');
+  const [defaultTextSize, setDefaultTextSize] = useState<FontSize>('medium');
+  const [physicalCharacteristics, setPhysicalCharacteristics] = useState<PhysicalCharacteristicsData>({
+    profileImageFile: null,
+    profileImageUrl: null,
+    skinTone: null,
+    hairColor: null,
+    eyeColor: null,
+    gender: null,
+    pronouns: null,
+  });
+  const [showCharacteristics, setShowCharacteristics] = useState(false);
 
   const resetForm = () => {
     setName('');
@@ -27,6 +47,17 @@ export function Profile() {
     setReadingLevel(READING_LEVELS[1]);
     setFavoriteThings([]);
     setParentSummary('');
+    setDefaultTextSize('medium');
+    setPhysicalCharacteristics({
+      profileImageFile: null,
+      profileImageUrl: null,
+      skinTone: null,
+      hairColor: null,
+      eyeColor: null,
+      gender: null,
+      pronouns: null,
+    });
+    setShowCharacteristics(false);
     setError('');
   };
 
@@ -37,6 +68,19 @@ export function Profile() {
     setReadingLevel(child.reading_level as ReadingLevel);
     setFavoriteThings(child.favorite_things);
     setParentSummary(child.parent_summary || '');
+    setDefaultTextSize(child.default_text_size);
+    setPhysicalCharacteristics({
+      profileImageFile: null,
+      profileImageUrl: child.profile_image_url,
+      skinTone: child.skin_tone,
+      hairColor: child.hair_color,
+      eyeColor: child.eye_color,
+      gender: child.gender,
+      pronouns: child.pronouns,
+    });
+    // Show characteristics section if any values are set
+    const hasCharacteristics = child.profile_image_url || child.skin_tone || child.hair_color || child.eye_color || child.gender || child.pronouns;
+    setShowCharacteristics(!!hasCharacteristics);
     setIsCreating(false);
   };
 
@@ -69,12 +113,45 @@ export function Profile() {
     setLoading(true);
     setError('');
 
+    // Handle profile image upload if a new file was selected
+    let profileImageUrl: string | null = physicalCharacteristics.profileImageUrl ?? null;
+    let profileImageStoragePath: string | null = editingChild?.profile_image_storage_path ?? null;
+
+    if (physicalCharacteristics.profileImageFile && user) {
+      // Delete old image if exists
+      if (editingChild?.profile_image_storage_path) {
+        await deleteProfileImage(editingChild.profile_image_storage_path);
+      }
+
+      const result = await uploadProfileImage(user.id, physicalCharacteristics.profileImageFile);
+      if (result) {
+        profileImageUrl = result.url;
+        profileImageStoragePath = result.storagePath;
+      } else {
+        setError('Failed to upload profile image');
+        setLoading(false);
+        return;
+      }
+    } else if (physicalCharacteristics.profileImageUrl === null && editingChild?.profile_image_storage_path) {
+      // Image was removed
+      await deleteProfileImage(editingChild.profile_image_storage_path);
+      profileImageStoragePath = null;
+    }
+
     const childData = {
       name: name.trim(),
       age: parseInt(age),
       reading_level: readingLevel,
       favorite_things: favoriteThings,
       parent_summary: parentSummary.trim() || null,
+      default_text_size: defaultTextSize,
+      profile_image_url: profileImageUrl,
+      profile_image_storage_path: profileImageStoragePath,
+      skin_tone: physicalCharacteristics.skinTone,
+      hair_color: physicalCharacteristics.hairColor,
+      eye_color: physicalCharacteristics.eyeColor,
+      gender: physicalCharacteristics.gender,
+      pronouns: physicalCharacteristics.pronouns,
     };
 
     if (isCreating) {
@@ -166,6 +243,18 @@ export function Profile() {
                 options={READING_LEVELS.map(level => ({ value: level, label: level }))}
               />
 
+              <Select
+                label="Default Text Size"
+                value={defaultTextSize}
+                onChange={(e) => setDefaultTextSize(e.target.value as FontSize)}
+                options={[
+                  { value: 'small', label: 'Small (A)' },
+                  { value: 'medium', label: 'Medium (A+)' },
+                  { value: 'large', label: 'Large (A++)' },
+                  { value: 'extra-large', label: 'Extra Large (A+++)' },
+                ]}
+              />
+
               <TagInput
                 label="Favorite Things"
                 tags={favoriteThings}
@@ -180,6 +269,38 @@ export function Profile() {
                 value={parentSummary}
                 onChange={(e) => setParentSummary(e.target.value)}
               />
+
+              {/* Physical Characteristics Section */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCharacteristics(!showCharacteristics)}
+                  className="w-full flex items-center justify-between text-left"
+                >
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">Physical Characteristics</h3>
+                    <p className="text-sm text-gray-500">Optional - for personalized story illustrations</p>
+                  </div>
+                  <svg
+                    className={`w-5 h-5 text-gray-400 transition-transform ${showCharacteristics ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {showCharacteristics && (
+                  <div className="mt-4">
+                    <PhysicalCharacteristicsForm
+                      data={physicalCharacteristics}
+                      onChange={setPhysicalCharacteristics}
+                      showProfileImage={true}
+                    />
+                  </div>
+                )}
+              </div>
 
               <div className="flex gap-3 pt-4">
                 <Button variant="outline" onClick={cancelEdit} className="flex-1">
@@ -205,9 +326,17 @@ export function Profile() {
                 )}
 
                 <div className="flex items-start gap-4">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-secondary-400 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
-                    {child.name.charAt(0).toUpperCase()}
-                  </div>
+                  {child.profile_image_url ? (
+                    <img
+                      src={child.profile_image_url}
+                      alt={child.name}
+                      className="w-16 h-16 rounded-full object-cover flex-shrink-0 border-2 border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-400 to-secondary-400 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+                      {child.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-bold text-gray-800">{child.name}</h3>
                     <p className="text-sm text-gray-600">

@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChild } from '../context/ChildContext';
+import { useAuth } from '../context/AuthContext';
 import { Button, Input, Select, TextArea, TagInput, Card } from '../components/ui';
+import { PhysicalCharacteristicsForm, type PhysicalCharacteristicsData } from '../components/ui/PhysicalCharacteristicsForm';
+import { uploadProfileImage } from '../hooks/useProfileImage';
 import { READING_LEVELS, type ReadingLevel } from '../types';
 
 export function Onboarding() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { createChild } = useChild();
 
   const [step, setStep] = useState(1);
@@ -17,6 +21,15 @@ export function Onboarding() {
   const [readingLevel, setReadingLevel] = useState<ReadingLevel>(READING_LEVELS[1]);
   const [favoriteThings, setFavoriteThings] = useState<string[]>([]);
   const [parentSummary, setParentSummary] = useState('');
+  const [physicalCharacteristics, setPhysicalCharacteristics] = useState<PhysicalCharacteristicsData>({
+    profileImageFile: null,
+    profileImageUrl: null,
+    skinTone: null,
+    hairColor: null,
+    eyeColor: null,
+    gender: null,
+    pronouns: null,
+  });
 
   const handleNext = () => {
     if (step === 1) {
@@ -37,6 +50,9 @@ export function Onboarding() {
       }
       setError('');
       setStep(3);
+    } else if (step === 3) {
+      setError('');
+      setStep(4);
     }
   };
 
@@ -49,12 +65,36 @@ export function Onboarding() {
     setLoading(true);
     setError('');
 
+    // Handle profile image upload if a file was selected
+    let profileImageUrl: string | null = null;
+    let profileImageStoragePath: string | null = null;
+
+    if (physicalCharacteristics.profileImageFile && user) {
+      const result = await uploadProfileImage(user.id, physicalCharacteristics.profileImageFile);
+      if (result) {
+        profileImageUrl = result.url;
+        profileImageStoragePath = result.storagePath;
+      } else {
+        setError('Failed to upload profile image. Please try again.');
+        setLoading(false);
+        return;
+      }
+    }
+
     const child = await createChild({
       name: name.trim(),
       age: parseInt(age),
       reading_level: readingLevel,
       favorite_things: favoriteThings,
       parent_summary: parentSummary.trim() || null,
+      default_text_size: 'medium',
+      profile_image_url: profileImageUrl,
+      profile_image_storage_path: profileImageStoragePath,
+      skin_tone: physicalCharacteristics.skinTone,
+      hair_color: physicalCharacteristics.hairColor,
+      eye_color: physicalCharacteristics.eyeColor,
+      gender: physicalCharacteristics.gender,
+      pronouns: physicalCharacteristics.pronouns,
     });
 
     if (child) {
@@ -83,7 +123,7 @@ export function Onboarding() {
         </div>
 
         <div className="flex justify-center gap-2 mb-8">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div
               key={s}
               className={`w-3 h-3 rounded-full transition-all duration-200 ${
@@ -179,19 +219,39 @@ export function Onboarding() {
             </div>
           )}
 
+          {step === 4 && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Physical Characteristics (Optional)</h2>
+              <p className="text-gray-600 text-sm mb-4">
+                Help us create story illustrations that look more like {name || 'your child'}.
+                All fields are optional - skip any you'd prefer not to share.
+              </p>
+              <PhysicalCharacteristicsForm
+                data={physicalCharacteristics}
+                onChange={setPhysicalCharacteristics}
+                showProfileImage={true}
+              />
+            </div>
+          )}
+
           <div className="flex gap-3 mt-6">
             {step > 1 && (
               <Button variant="outline" onClick={handleBack} className="flex-1">
                 Back
               </Button>
             )}
-            {step < 3 ? (
+            {step < 4 ? (
               <Button onClick={handleNext} className="flex-1">
                 Continue
               </Button>
             ) : (
               <Button onClick={handleSubmit} loading={loading} className="flex-1">
                 Create Profile
+              </Button>
+            )}
+            {step === 4 && (
+              <Button variant="ghost" onClick={handleSubmit} loading={loading} className="flex-1">
+                Skip & Create
               </Button>
             )}
           </div>

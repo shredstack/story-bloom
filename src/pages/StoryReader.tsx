@@ -30,6 +30,13 @@ export function StoryReader() {
     }
   }, [id, stories]);
 
+  // Set font size to child's default when story loads
+  useEffect(() => {
+    if (selectedChild?.default_text_size) {
+      setFontSize(selectedChild.default_text_size);
+    }
+  }, [selectedChild, setFontSize]);
+
   if (!story) {
     return (
       <Layout>
