@@ -148,18 +148,10 @@ async function generateAndUploadIllustration(
 }
 
 export default async function handler(req: Request): Promise<Response> {
-  // Common headers to prevent caching of API responses
-  const responseHeaders = {
-    'Content-Type': 'application/json',
-    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0',
-  };
-
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
-      headers: responseHeaders,
+      headers: { 'Content-Type': 'application/json' },
     });
   }
 
@@ -170,7 +162,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!childName || !childAge || !readingLevel || !favoriteThings?.length) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
-        headers: responseHeaders,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
@@ -182,7 +174,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!anthropicApiKey) {
       return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
         status: 500,
-        headers: responseHeaders,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
@@ -323,14 +315,14 @@ Respond in this exact JSON format:
     } catch {
       return new Response(JSON.stringify({ error: 'Failed to parse story response' }), {
         status: 500,
-        headers: responseHeaders,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
     if (!storyData.title || !storyData.content) {
       return new Response(JSON.stringify({ error: 'Invalid story format' }), {
         status: 500,
-        headers: responseHeaders,
+        headers: { 'Content-Type': 'application/json' },
       });
     }
 
@@ -366,7 +358,7 @@ Respond in this exact JSON format:
 
     return new Response(JSON.stringify(storyData), {
       status: 200,
-      headers: responseHeaders,
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
     console.error('Error generating story:', error);
@@ -374,12 +366,12 @@ Respond in this exact JSON format:
       JSON.stringify({ error: 'Failed to generate story. Please try again.' }),
       {
         status: 500,
-        headers: responseHeaders,
+        headers: { 'Content-Type': 'application/json' },
       }
     );
   }
 }
 
 export const config = {
-  maxDuration: 180, // Allow up to 180 seconds for story generation (Claude + DALL-E + upload)
+  runtime: 'edge',
 };
