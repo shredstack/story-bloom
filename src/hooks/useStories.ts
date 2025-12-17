@@ -38,7 +38,8 @@ export function useStories(childId: string | undefined) {
     title: string,
     content: string,
     customPrompt: string | null,
-    illustrations: Illustration[] | null
+    illustrations: Illustration[] | null,
+    sourceIllustrationUrl: string | null = null
   ): Promise<Story | null> => {
     if (!childId) return null;
 
@@ -51,6 +52,7 @@ export function useStories(childId: string | undefined) {
         custom_prompt: customPrompt,
         illustrations,
         is_favorited: false,
+        source_illustration_url: sourceIllustrationUrl,
       }])
       .select()
       .single();
@@ -140,7 +142,8 @@ export function useGenerateStory() {
     readingLevel: string,
     favoriteThings: string[],
     parentSummary: string | null,
-    customPrompt: string | null
+    customPrompt: string | null,
+    sourceIllustrationUrl: string | null = null
   ): Promise<StoryGenerationResponse | null> => {
     setGenerating(true);
     setError(null);
@@ -156,6 +159,7 @@ export function useGenerateStory() {
           favoriteThings,
           parentSummary,
           customPrompt,
+          sourceIllustrationUrl,
         }),
       });
 

@@ -35,6 +35,7 @@ export interface Story {
   custom_prompt: string | null;
   illustrations: Illustration[] | null;
   is_favorited: boolean;
+  source_illustration_url: string | null;
   created_at: string;
 }
 
@@ -42,6 +43,7 @@ export interface StoryGenerationResponse {
   title: string;
   content: string;
   illustrations: Illustration[];
+  warning?: string;
 }
 
 export type FontSize = 'small' | 'medium' | 'large' | 'extra-large';

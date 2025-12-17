@@ -9,12 +9,19 @@ interface RequestBody {
   favoriteThings: string[];
   parentSummary: string | null;
   customPrompt: string | null;
+  sourceIllustrationUrl: string | null;
 }
 
 interface StoryResponse {
   title: string;
   content: string;
   illustrations: { description: string; position: number; imageUrl?: string }[];
+  warning?: string;
+}
+
+interface IllustrationResult {
+  imageUrl: string | null;
+  error?: string;
 }
 
 async function generateAndUploadIllustration(
@@ -22,7 +29,7 @@ async function generateAndUploadIllustration(
   openai: OpenAI,
   supabaseUrl: string,
   supabaseKey: string
-): Promise<string | null> {
+): Promise<IllustrationResult> {
   try {
     // Generate image with DALL-E 3
     const response = await openai.images.generate({
@@ -34,13 +41,13 @@ async function generateAndUploadIllustration(
     });
 
     const tempImageUrl = response.data[0]?.url;
-    if (!tempImageUrl) return null;
+    if (!tempImageUrl) return { imageUrl: null };
 
     // Fetch the image from OpenAI's temporary URL
     const imageResponse = await fetch(tempImageUrl);
     if (!imageResponse.ok) {
       console.error('Failed to fetch image from OpenAI');
-      return null;
+      return { imageUrl: null };
     }
 
     const imageBlob = await imageResponse.blob();
@@ -64,7 +71,7 @@ async function generateAndUploadIllustration(
 
     if (uploadError) {
       console.error('Error uploading to Supabase:', uploadError);
-      return null;
+      return { imageUrl: null };
     }
 
     // Get public URL
@@ -72,10 +79,19 @@ async function generateAndUploadIllustration(
       .from('story-illustrations')
       .getPublicUrl(filename);
 
-    return publicUrlData.publicUrl;
-  } catch (error) {
+    return { imageUrl: publicUrlData.publicUrl };
+  } catch (error: unknown) {
     console.error('Error generating/uploading illustration:', error);
-    return null;
+
+    // Check for content policy violation from OpenAI
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'content_policy_violation') {
+      return {
+        imageUrl: null,
+        error: 'content_policy_violation'
+      };
+    }
+
+    return { imageUrl: null };
   }
 }
 
@@ -89,7 +105,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     const body: RequestBody = await req.json();
-    const { childName, childAge, readingLevel, favoriteThings, parentSummary, customPrompt } = body;
+    const { childName, childAge, readingLevel, favoriteThings, parentSummary, customPrompt, sourceIllustrationUrl } = body;
 
     if (!childName || !childAge || !readingLevel || !favoriteThings?.length) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -127,6 +143,10 @@ export default async function handler(req: Request): Promise<Response> {
 
     const levelConfig = wordCountByLevel[readingLevel] || wordCountByLevel['Kindergarten'];
 
+    const illustrationContext = sourceIllustrationUrl
+      ? `\n\nIMPORTANT: The user has provided an illustration image. You must create a story that is INSPIRED BY and INCORPORATES what you see in this image. The image should be central to the story - use the characters, setting, objects, or scene depicted in the illustration as the foundation for your story. Be creative in weaving the visual elements into an engaging narrative.`
+      : '';
+
     const prompt = `You are a creative children's story writer. Generate an engaging, age-appropriate story for a child with the following profile:
 
 - Name: ${childName}
@@ -135,7 +155,7 @@ export default async function handler(req: Request): Promise<Response> {
 - Interests: ${favoriteThings.join(', ')}
 ${parentSummary ? `- About the child: ${parentSummary}` : ''}
 
-${customPrompt ? `The child specifically requested: ${customPrompt}` : ''}
+${customPrompt ? `The child specifically requested: ${customPrompt}` : ''}${illustrationContext}
 
 CRITICAL LENGTH REQUIREMENTS for ${readingLevel} reading level:
 - Story MUST be ${levelConfig.min}-${levelConfig.max} words total (${levelConfig.sentences})
@@ -149,7 +169,7 @@ Please write a story that:
 3. Incorporates the child's interests naturally into the story
 4. Is engaging and fun
 5. Has a simple beginning, middle, and end
-6. Features ${childName} as the main character
+6. Features ${childName} as the main character${sourceIllustrationUrl ? '\n7. Is directly inspired by and incorporates elements from the provided illustration' : ''}
 
 Provide exactly 1 illustration description for the most exciting moment in the story. The position should be the character index in the story content where the illustration should appear (typically near the middle or climax).
 
@@ -169,6 +189,56 @@ Respond in this exact JSON format:
   ]
 }`;
 
+    // Helper function to convert ArrayBuffer to base64 (edge runtime compatible)
+    function arrayBufferToBase64(buffer: ArrayBuffer): string {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    // Build the message content - include image if sourceIllustrationUrl is provided
+    let messageContent: Anthropic.MessageCreateParams['messages'][0]['content'];
+
+    if (sourceIllustrationUrl) {
+      // Fetch the image and convert to base64
+      try {
+        const imageResponse = await fetch(sourceIllustrationUrl);
+        if (!imageResponse.ok) {
+          throw new Error('Failed to fetch illustration');
+        }
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = arrayBufferToBase64(imageBuffer);
+
+        // Determine media type from content-type header or URL
+        const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+        const mediaType = contentType.split(';')[0].trim() as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+        messageContent = [
+          {
+            type: 'image' as const,
+            source: {
+              type: 'base64' as const,
+              media_type: mediaType,
+              data: base64Image,
+            },
+          },
+          {
+            type: 'text' as const,
+            text: prompt,
+          },
+        ];
+      } catch (imageError) {
+        console.error('Error fetching illustration:', imageError);
+        // Fall back to text-only if image fetch fails
+        messageContent = prompt;
+      }
+    } else {
+      messageContent = prompt;
+    }
+
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
@@ -176,7 +246,7 @@ Respond in this exact JSON format:
       messages: [
         {
           role: 'user',
-          content: prompt,
+          content: messageContent,
         },
       ],
     });
@@ -205,18 +275,31 @@ Respond in this exact JSON format:
     }
 
     // Generate actual illustrations using DALL-E 3 and upload to Supabase
+    let illustrationWarning: string | undefined;
+
     if (canUploadImages && storyData.illustrations?.length > 0) {
       const illustrationPromises = storyData.illustrations.map(async (illustration) => {
-        const imageUrl = await generateAndUploadIllustration(
+        const result = await generateAndUploadIllustration(
           illustration.description,
           openai,
           supabaseUrl,
           supabaseServiceKey
         );
-        return { ...illustration, imageUrl: imageUrl || undefined };
+
+        // Track content policy violations to warn the user
+        if (result.error === 'content_policy_violation') {
+          illustrationWarning = 'illustration_content_policy';
+        }
+
+        return { ...illustration, imageUrl: result.imageUrl || undefined };
       });
 
       storyData.illustrations = await Promise.all(illustrationPromises);
+    }
+
+    // Add warning to response if there was an illustration issue
+    if (illustrationWarning) {
+      storyData.warning = illustrationWarning;
     }
 
     return new Response(JSON.stringify(storyData), {

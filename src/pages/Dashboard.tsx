@@ -2,20 +2,41 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { useChild } from '../context/ChildContext';
+import { useAuth } from '../context/AuthContext';
 import { useStories, useGenerateStory } from '../hooks/useStories';
-import { Button, TextArea, Card } from '../components/ui';
+import { useCustomIllustrations } from '../hooks/useCustomIllustrations';
+import { Button, TextArea, Card, IllustrationPicker } from '../components/ui';
+import type { CustomIllustration } from '../types';
+
+type GenerationMode = 'random' | 'topic' | 'illustration';
 
 export function Dashboard() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { selectedChild, children } = useChild();
   const { stories, createStory } = useStories(selectedChild?.id);
   const { generateStory, generating, error: generateError } = useGenerateStory();
+  const { illustrations, loading: illustrationsLoading, uploadIllustration } = useCustomIllustrations(user?.id);
 
   const [customPrompt, setCustomPrompt] = useState('');
-  const [showPromptInput, setShowPromptInput] = useState(false);
+  const [generationMode, setGenerationMode] = useState<GenerationMode | null>(null);
+  const [selectedIllustration, setSelectedIllustration] = useState<CustomIllustration | null>(null);
+  const [illustrationWarning, setIllustrationWarning] = useState<string | null>(null);
 
   const handleGenerateStory = async () => {
     if (!selectedChild) return;
+
+    // For illustration mode, require a selected illustration
+    if (generationMode === 'illustration' && !selectedIllustration) {
+      return;
+    }
+
+    // Clear any previous warning
+    setIllustrationWarning(null);
+
+    const sourceIllustrationUrl = generationMode === 'illustration' && selectedIllustration
+      ? selectedIllustration.image_url
+      : null;
 
     const result = await generateStory(
       selectedChild.name,
@@ -23,21 +44,55 @@ export function Dashboard() {
       selectedChild.reading_level,
       selectedChild.favorite_things,
       selectedChild.parent_summary,
-      customPrompt.trim() || null
+      customPrompt.trim() || null,
+      sourceIllustrationUrl
     );
 
     if (result) {
+      // Check for illustration generation warning
+      if (result.warning === 'illustration_content_policy') {
+        setIllustrationWarning(
+          'We couldn\'t generate an illustration for this story because the image contained people. ' +
+          'Try using a drawing, artwork, or scene without real people for best results. ' +
+          'Your story was still created successfully!'
+        );
+      }
+
       const story = await createStory(
         result.title,
         result.content,
         customPrompt.trim() || null,
-        result.illustrations
+        result.illustrations,
+        sourceIllustrationUrl
       );
 
       if (story) {
-        navigate(`/story/${story.id}`);
+        // Reset state but keep warning visible briefly
+        setGenerationMode(null);
+        setCustomPrompt('');
+        setSelectedIllustration(null);
+
+        // If there was a warning, show it before navigating
+        if (result.warning === 'illustration_content_policy') {
+          // Give user time to read the warning, then navigate
+          setTimeout(() => {
+            navigate(`/story/${story.id}`);
+          }, 4000);
+        } else {
+          navigate(`/story/${story.id}`);
+        }
       }
     }
+  };
+
+  const handleUploadNewIllustration = async (file: File, name: string): Promise<CustomIllustration | null> => {
+    return await uploadIllustration(file, name, null);
+  };
+
+  const resetGenerationMode = () => {
+    setGenerationMode(null);
+    setCustomPrompt('');
+    setSelectedIllustration(null);
   };
 
   if (!selectedChild) {
@@ -82,7 +137,7 @@ export function Dashboard() {
             </div>
             <h2 className="text-2xl font-bold text-gray-800 mb-4">Create a New Story</h2>
 
-            {showPromptInput ? (
+            {generationMode === 'topic' ? (
               <div className="max-w-md mx-auto mb-4">
                 <TextArea
                   placeholder="What kind of story would you like? (e.g., 'a story about rainbow dinosaurs' or 'an adventure in outer space')"
@@ -93,10 +148,7 @@ export function Dashboard() {
                 <div className="flex gap-2 mt-3">
                   <Button
                     variant="outline"
-                    onClick={() => {
-                      setShowPromptInput(false);
-                      setCustomPrompt('');
-                    }}
+                    onClick={resetGenerationMode}
                     className="flex-1"
                   >
                     Cancel
@@ -110,19 +162,69 @@ export function Dashboard() {
                   </Button>
                 </div>
               </div>
+            ) : generationMode === 'illustration' ? (
+              <div className="max-w-md mx-auto mb-4 text-left">
+                <p className="text-sm text-gray-600 mb-3 text-center">
+                  Select an illustration to inspire your story
+                </p>
+                <IllustrationPicker
+                  illustrations={illustrations}
+                  loading={illustrationsLoading}
+                  onSelect={setSelectedIllustration}
+                  onUploadNew={handleUploadNewIllustration}
+                  selectedIllustration={selectedIllustration}
+                />
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    variant="outline"
+                    onClick={resetGenerationMode}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleGenerateStory}
+                    loading={generating}
+                    disabled={!selectedIllustration}
+                    className="flex-1"
+                  >
+                    Generate Story
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <div className="flex flex-col gap-3 max-w-md mx-auto">
                 <Button size="lg" onClick={handleGenerateStory} loading={generating}>
                   Generate Random Story
                 </Button>
-                <Button size="lg" variant="outline" onClick={() => setShowPromptInput(true)}>
-                  Choose a Topic
-                </Button>
+                <div className="flex gap-3">
+                  <Button size="lg" variant="outline" onClick={() => setGenerationMode('topic')} className="flex-1">
+                    Choose a Topic
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => setGenerationMode('illustration')} className="flex-1">
+                    From Illustration
+                  </Button>
+                </div>
               </div>
             )}
 
             {generateError && (
               <p className="mt-4 text-red-500 text-sm">{generateError}</p>
+            )}
+
+            {illustrationWarning && (
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-left max-w-md mx-auto">
+                <div className="flex gap-3">
+                  <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm text-amber-800 font-medium mb-1">Illustration Notice</p>
+                    <p className="text-sm text-amber-700">{illustrationWarning}</p>
+                    <p className="text-xs text-amber-600 mt-2">Redirecting to your story...</p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </Card>
