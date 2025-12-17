@@ -5,7 +5,7 @@ import { useChild } from '../context/ChildContext';
 import { useStories } from '../hooks/useStories';
 import { useFontSize } from '../hooks/useFontSize';
 import { Button, Card } from '../components/ui';
-import { FONT_SIZE_CLASSES, type FontSize, type Story, type Illustration } from '../types';
+import { FONT_SIZE_CLASSES, type FontSize, type Story } from '../types';
 
 export function StoryReader() {
   const { id } = useParams<{ id: string }>();
@@ -48,54 +48,41 @@ export function StoryReader() {
 
   const fontSizes: FontSize[] = ['small', 'medium', 'large', 'extra-large'];
 
-  const renderContentWithIllustrations = () => {
+  const renderStoryContent = () => {
+    return <p className={`${FONT_SIZE_CLASSES[fontSize]} whitespace-pre-wrap`}>{story.content}</p>;
+  };
+
+  const renderIllustration = () => {
     const illustrations = story.illustrations || [];
-    if (illustrations.length === 0) {
-      return <p className={`${FONT_SIZE_CLASSES[fontSize]} whitespace-pre-wrap`}>{story.content}</p>;
+    if (illustrations.length === 0) return null;
+
+    const illustration = illustrations[0];
+
+    if (illustration.imageUrl) {
+      return (
+        <div className="mt-8 rounded-2xl overflow-hidden shadow-lg">
+          <img
+            src={illustration.imageUrl}
+            alt={illustration.description}
+            className="w-full h-auto"
+          />
+          <p className="text-sm text-gray-500 italic text-center py-3 px-4 bg-gray-50">
+            {illustration.description}
+          </p>
+        </div>
+      );
     }
 
-    const sortedIllustrations = [...illustrations].sort((a, b) => a.position - b.position);
-    const content = story.content;
-    const parts: (string | Illustration)[] = [];
-    let lastIndex = 0;
-
-    sortedIllustrations.forEach(ill => {
-      if (ill.position > lastIndex) {
-        parts.push(content.slice(lastIndex, ill.position));
-      }
-      parts.push(ill);
-      lastIndex = ill.position;
-    });
-
-    if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex));
-    }
-
+    // Fallback for stories without generated images
     return (
-      <div className="space-y-6">
-        {parts.map((part, index) => {
-          if (typeof part === 'string') {
-            return (
-              <p key={index} className={`${FONT_SIZE_CLASSES[fontSize]} whitespace-pre-wrap`}>
-                {part}
-              </p>
-            );
-          }
-          return (
-            <div
-              key={index}
-              className="my-6 p-4 rounded-xl bg-gradient-to-br from-primary-50 to-secondary-50 border-2 border-dashed border-primary-200"
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span className="text-sm font-semibold text-primary-600">Illustration</span>
-              </div>
-              <p className="text-gray-600 italic">{part.description}</p>
-            </div>
-          );
-        })}
+      <div className="mt-8 p-6 rounded-xl bg-gradient-to-br from-primary-50 to-secondary-50 border-2 border-dashed border-primary-200">
+        <div className="flex items-center gap-2 mb-2">
+          <svg className="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="text-sm font-semibold text-primary-600">Illustration</span>
+        </div>
+        <p className="text-gray-600 italic">{illustration.description}</p>
       </div>
     );
   };
@@ -186,8 +173,10 @@ export function StoryReader() {
           </header>
 
           <div className="prose prose-lg max-w-none">
-            {renderContentWithIllustrations()}
+            {renderStoryContent()}
           </div>
+
+          {renderIllustration()}
 
           <footer className="mt-12 pt-8 border-t border-gray-100 text-center">
             <p className="text-gray-500 font-medium">The End</p>

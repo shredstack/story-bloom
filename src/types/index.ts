@@ -12,6 +12,7 @@ export interface Child {
 export interface Illustration {
   description: string;
   position: number;
+  imageUrl?: string;
 }
 
 export interface Story {
