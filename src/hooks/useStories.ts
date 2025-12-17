@@ -166,9 +166,7 @@ export function useGenerateStory() {
           contentType,
           url: response.url,
         });
-        throw new Error(
-          'API endpoint not available. Make sure you are running "vercel dev" instead of "npm run dev" for local development.'
-        );
+        throw new Error('LLM API failure - please try again!');
       }
 
       if (!response.ok) {
