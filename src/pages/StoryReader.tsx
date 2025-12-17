@@ -276,7 +276,13 @@ export function StoryReader() {
               </p>
             )}
             <p className="text-xs text-gray-400 mt-2">
-              Created {new Date(story.created_at).toLocaleDateString()}
+              Created {new Date(story.created_at).toLocaleString(undefined, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              })}
             </p>
           </header>
 

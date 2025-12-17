@@ -10,6 +10,12 @@ interface PhysicalCharacteristics {
   pronouns: string | null;
 }
 
+interface SourceIllustration {
+  url: string;
+  title: string;
+  description: string | null;
+}
+
 interface RequestBody {
   childName: string;
   childAge: number;
@@ -17,7 +23,7 @@ interface RequestBody {
   favoriteThings: string[];
   parentSummary: string | null;
   customPrompt: string | null;
-  sourceIllustrationUrl: string | null;
+  sourceIllustration: SourceIllustration | null;
   physicalCharacteristics?: PhysicalCharacteristics | null;
 }
 
@@ -151,7 +157,7 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     const body: RequestBody = await req.json();
-    const { childName, childAge, readingLevel, favoriteThings, parentSummary, customPrompt, sourceIllustrationUrl, physicalCharacteristics } = body;
+    const { childName, childAge, readingLevel, favoriteThings, parentSummary, customPrompt, sourceIllustration, physicalCharacteristics } = body;
 
     if (!childName || !childAge || !readingLevel || !favoriteThings?.length) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
@@ -189,8 +195,8 @@ export default async function handler(req: Request): Promise<Response> {
 
     const levelConfig = wordCountByLevel[readingLevel] || wordCountByLevel['Kindergarten'];
 
-    const illustrationContext = sourceIllustrationUrl
-      ? `\n\nIMPORTANT: The user has provided an illustration image. You must create a story that is INSPIRED BY and INCORPORATES what you see in this image. The image should be central to the story - use the characters, setting, objects, or scene depicted in the illustration as the foundation for your story. Be creative in weaving the visual elements into an engaging narrative.`
+    const illustrationContext = sourceIllustration
+      ? `\n\nIMPORTANT: The user has provided an illustration image titled "${sourceIllustration.title}"${sourceIllustration.description ? ` with the description: "${sourceIllustration.description}"` : ''}. You must create a story that is INSPIRED BY and INCORPORATES what you see in this image, keeping in mind the title${sourceIllustration.description ? ' and description' : ''} the user provided. The image should be central to the story - use the characters, setting, objects, or scene depicted in the illustration as the foundation for your story. Be creative in weaving the visual elements into an engaging narrative.`
       : '';
 
     const prompt = `You are a creative children's story writer. Generate an engaging, age-appropriate story for a child with the following profile:
@@ -215,7 +221,7 @@ Please write a story that:
 3. Incorporates the child's interests naturally into the story
 4. Is engaging and fun
 5. Has a simple beginning, middle, and end
-6. Features ${childName} as the main character${sourceIllustrationUrl ? '\n7. Is directly inspired by and incorporates elements from the provided illustration' : ''}
+6. Features ${childName} as the main character${sourceIllustration ? '\n7. Is directly inspired by and incorporates elements from the provided illustration' : ''}
 
 Provide exactly 1 illustration description for the most exciting moment in the story. The position should be the character index in the story content where the illustration should appear (typically near the middle or climax).
 
@@ -245,13 +251,13 @@ Respond in this exact JSON format:
       return btoa(binary);
     }
 
-    // Build the message content - include image if sourceIllustrationUrl is provided
+    // Build the message content - include image if sourceIllustration is provided
     let messageContent: Anthropic.MessageCreateParams['messages'][0]['content'];
 
-    if (sourceIllustrationUrl) {
+    if (sourceIllustration) {
       // Fetch the image and convert to base64
       try {
-        const imageResponse = await fetch(sourceIllustrationUrl);
+        const imageResponse = await fetch(sourceIllustration.url);
         if (!imageResponse.ok) {
           throw new Error('Failed to fetch illustration');
         }

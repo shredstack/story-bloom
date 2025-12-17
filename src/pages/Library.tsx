@@ -149,37 +149,64 @@ export function Library() {
           </Card>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredStories.map(story => (
-              <Card
-                key={story.id}
-                hoverable
-                onClick={() => navigate(`/story/${story.id}`)}
-                className="cursor-pointer"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="font-bold text-gray-800 text-lg line-clamp-1 flex-1">
-                    {story.title}
-                  </h3>
-                  {story.is_favorited && (
-                    <svg className="w-5 h-5 text-accent-500 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
+            {filteredStories.map(story => {
+              // Get thumbnail: prefer first illustration, fallback to source image
+              const thumbnailUrl = story.illustrations?.[0]?.imageUrl || story.source_illustration_url;
+
+              return (
+                <Card
+                  key={story.id}
+                  hoverable
+                  onClick={() => navigate(`/story/${story.id}`)}
+                  className="cursor-pointer"
+                >
+                  {thumbnailUrl && (
+                    <div className="relative -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-xl">
+                      <img
+                        src={thumbnailUrl}
+                        alt={`Illustration for ${story.title}`}
+                        className="w-full h-32 object-cover"
+                      />
+                      {story.is_favorited && (
+                        <div className="absolute top-2 right-2 bg-white/90 rounded-full p-1.5 shadow-sm">
+                          <svg className="w-4 h-4 text-accent-500" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
                   )}
-                </div>
-                <p className="text-gray-600 text-sm line-clamp-3 mb-3">
-                  {story.content.slice(0, 150)}...
-                </p>
-                {story.custom_prompt && (
-                  <p className="text-xs text-primary-600 mb-2 line-clamp-1">
-                    Topic: {story.custom_prompt}
+                  <div className={`flex items-start justify-between ${thumbnailUrl ? '' : 'mb-3'}`}>
+                    <h3 className="font-bold text-gray-800 text-lg line-clamp-1 flex-1">
+                      {story.title}
+                    </h3>
+                    {!thumbnailUrl && story.is_favorited && (
+                      <svg className="w-5 h-5 text-accent-500 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                    )}
+                  </div>
+                  <p className="text-gray-600 text-sm line-clamp-3 mb-3 mt-2">
+                    {story.content.slice(0, 150)}...
                   </p>
-                )}
-                <div className="flex items-center justify-between text-xs text-gray-400">
-                  <span>{new Date(story.created_at).toLocaleDateString()}</span>
-                  <span className="text-primary-500 font-medium">Read story →</span>
-                </div>
-              </Card>
-            ))}
+                  {story.custom_prompt && (
+                    <p className="text-xs text-primary-600 mb-2 line-clamp-1">
+                      Topic: {story.custom_prompt}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-gray-400">
+                    <span>{new Date(story.created_at).toLocaleString(undefined, {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}</span>
+                    <span className="text-primary-500 font-medium">Read story →</span>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

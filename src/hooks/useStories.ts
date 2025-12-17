@@ -10,6 +10,12 @@ export interface PhysicalCharacteristicsForApi {
   pronouns: Pronouns | null;
 }
 
+export interface SourceIllustrationForApi {
+  url: string;
+  title: string;
+  description: string | null;
+}
+
 export function useStories(childId: string | undefined) {
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,7 +157,7 @@ export function useGenerateStory() {
     favoriteThings: string[],
     parentSummary: string | null,
     customPrompt: string | null,
-    sourceIllustrationUrl: string | null = null,
+    sourceIllustration: SourceIllustrationForApi | null = null,
     physicalCharacteristics: PhysicalCharacteristicsForApi | null = null
   ): Promise<StoryGenerationResponse | null> => {
     setGenerating(true);
@@ -168,7 +174,7 @@ export function useGenerateStory() {
           favoriteThings,
           parentSummary,
           customPrompt,
-          sourceIllustrationUrl,
+          sourceIllustration,
           physicalCharacteristics,
         }),
       });
