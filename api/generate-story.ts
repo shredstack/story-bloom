@@ -374,4 +374,5 @@ Respond in this exact JSON format:
 
 export const config = {
   runtime: 'edge',
+  maxDuration: 60, // Allow up to 60 seconds for story generation (requires Vercel Pro)
 };

@@ -163,6 +163,10 @@ export function useGenerateStory() {
     setGenerating(true);
     setError(null);
 
+    // Use AbortController for timeout - 90 seconds to account for AI generation time
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+
     try {
       const response = await fetch('/api/generate-story', {
         method: 'POST',
@@ -177,16 +181,38 @@ export function useGenerateStory() {
           sourceIllustration,
           physicalCharacteristics,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
+        // Log more details for debugging
+        let responseText = '';
+        try {
+          responseText = await response.text();
+        } catch {
+          responseText = 'Could not read response body';
+        }
         console.error('API returned non-JSON response:', {
           status: response.status,
+          statusText: response.statusText,
           contentType,
           url: response.url,
+          responsePreview: responseText.substring(0, 500),
         });
-        throw new Error('LLM API failure - please try again!');
+
+        // Provide more specific error messages based on status
+        if (response.status === 504 || response.status === 524) {
+          throw new Error('Story generation timed out. Please try again.');
+        } else if (response.status === 502 || response.status === 503) {
+          throw new Error('Server is temporarily unavailable. Please try again in a moment.');
+        } else if (response.status === 404) {
+          throw new Error('Story generation service not found. Please refresh the page.');
+        } else {
+          throw new Error('Story generation failed. Please try again.');
+        }
       }
 
       if (!response.ok) {
@@ -198,7 +224,19 @@ export function useGenerateStory() {
       const data: StoryGenerationResponse = await response.json();
       return data;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      clearTimeout(timeoutId);
+
+      let errorMessage: string;
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          errorMessage = 'Story generation took too long. Please try again.';
+        } else {
+          errorMessage = err.message;
+        }
+      } else {
+        errorMessage = 'An error occurred';
+      }
+
       console.error('Story generation failed:', errorMessage);
       setError(errorMessage);
       return null;

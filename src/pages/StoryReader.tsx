@@ -14,7 +14,7 @@ export function StoryReader() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { selectedChild } = useChild();
-  const { stories, toggleFavorite, deleteStory, updateStoryIllustrations } = useStories(selectedChild?.id);
+  const { stories, loading: storiesLoading, toggleFavorite, deleteStory, updateStoryIllustrations } = useStories(selectedChild?.id);
   const { illustrations: customIllustrations } = useCustomIllustrations(user?.id);
   const { fontSize, setFontSize } = useFontSize();
 
@@ -36,6 +36,24 @@ export function StoryReader() {
       setFontSize(selectedChild.default_text_size);
     }
   }, [selectedChild, setFontSize]);
+
+  if (storiesLoading) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto px-4 py-12 text-center">
+          <div className="animate-pulse">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary-100 flex items-center justify-center">
+              <svg className="w-8 h-8 text-primary-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            </div>
+            <h2 className="text-xl font-medium text-gray-600">Loading story...</h2>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!story) {
     return (
