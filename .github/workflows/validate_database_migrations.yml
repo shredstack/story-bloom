@@ -1,0 +1,69 @@
+name: Validate Database Migrations
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/validate-migrations.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify migration files
+        run: |
+          echo "Checking migration file syntax..."
+          for file in supabase/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              echo "Validating: $file"
+              # Check for basic SQL syntax issues
+              if ! grep -q "^--" "$file" && ! grep -q "CREATE\|ALTER\|DROP\|INSERT" "$file"; then
+                echo "❌ Warning: $file may be empty or invalid"
+                exit 1
+              fi
+            fi
+          done
+          echo "✅ All migration files validated"
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Check migration status
+        run: supabase migration list
+
+      - name: Test migrations locally
+        run: |
+          echo "Testing migrations in isolated environment..."
+          supabase db reset --debug
+
+      - name: Run database tests (if you have any)
+        run: |
+          echo "Running database tests..."
+          # Add your test commands here
+          # Example: npm run test:db
+
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+      - name: Comment on PR
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ Database migrations validated successfully! Safe to merge.'
+            })

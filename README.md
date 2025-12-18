@@ -141,6 +141,78 @@ A personalized children's reading app that generates custom stories using AI. St
 
 6. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
+### Supabase development setup
+
+Install Docker Desktop.
+
+Install the supabase cli and initialize the project:
+```bash
+brew install supabase/tap/supabase
+cd story-bloom
+supabase init
+```
+
+Login to supabase:
+```bash
+supabase login
+```
+
+Link your project:
+```bash
+supabase link --project-ref <supabase_project_id>
+```
+
+Get or generate a supabase access token by going to supabase and clicking on your user image on the top right. Then Account prefrences > Access Tokens. Add an environment variable to .env called `SUPABASE_ACCESS_TOKEN` then `source .env`.
+
+**Optional Steps**
+
+Pull existing schema from supabase:
+```bash
+supabase db pull
+```
+
+If you get errors from above, it's because you ran some migrations manually. To tell supabase these migrations have already been applied, just run the following for each migration file:
+```bash
+supabase migration repair --status applied 0001
+```
+
+List migrations that have been applied:
+```bash
+supabase migration list
+```
+
+Start you local supabase:
+```bash
+supabase start
+```
+
+You can always run the following to retrieve local supabase credentials:
+```bash
+supabase status
+```
+
+Use the keys that get outputted to update .env.development.local as well as .env.
+
+Go to this URL to access your local supabase: http://127.0.0.1:54323
+
+Run this to start the application using your local setup: `npm run dev:local`
+
+To add a new database migration, run this:
+```bash
+supabase migration new <description>
+```
+
+Once you add the migration to the file supabase created, run this to apply it locally:
+```bash
+supabase db push
+```
+
+To totally reset (recreate) your local database, run this:
+```bash
+supabase db reset
+```
+
+
 ## Project Structure
 
 ```
