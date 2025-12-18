@@ -57,17 +57,17 @@ export function Landing() {
                   🌟
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-gray-800">Peta's Adventure</h3>
-                  <p className="text-sm text-gray-500">Personalized for Peta, age 9</p>
+                  <h3 className="font-bold text-lg text-gray-800">Dallas and the Rainbow Axolotl</h3>
+                  <p className="text-sm text-gray-500">Personalized for Dallas, age 7</p>
                 </div>
               </div>
               <p className="text-gray-700 leading-relaxed">
-                "Once upon a time, in a garden full of rainbow flowers, there lived a curious butterfly named Peta. She loved exploring and making new friends..."
+                "Dallas put on her pink glasses. She saw something amazing in the water! A rainbow axolotl swam by her boat. It had bright colors like a rainbow. "Look Duke!" she called to her brother. The axolotl smiled at them. Dallas and Duke waved goodbye as it swam away."
               </p>
               <div className="flex gap-2">
-                <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">Butterflies</span>
+                <span className="px-3 py-1 bg-primary-100 text-primary-700 rounded-full text-sm font-medium">Axolotl</span>
                 <span className="px-3 py-1 bg-secondary-100 text-secondary-700 rounded-full text-sm font-medium">Adventure</span>
-                <span className="px-3 py-1 bg-accent-100 text-accent-700 rounded-full text-sm font-medium">Friendship</span>
+                <span className="px-3 py-1 bg-accent-100 text-accent-700 rounded-full text-sm font-medium">Boating</span>
               </div>
             </div>
           </div>
