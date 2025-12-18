@@ -77,7 +77,7 @@ jobs:
       - name: Notify Slack on success
         if: success()
         run: |
-          curl -X POST -H 'Content-type: application/json' \
+          curl -L -X POST -H 'Content-type: application/json' \
             --data '{
               "text": "✅ Database Migration Validation Passed",
               "blocks": [
@@ -131,7 +131,7 @@ jobs:
       - name: Notify Slack on failure
         if: failure()
         run: |
-          curl -X POST -H 'Content-type: application/json' \
+          curl -L -X POST -H 'Content-type: application/json' \
             --data '{
               "text": "🚨 Database Migration Validation Failed",
               "blocks": [
