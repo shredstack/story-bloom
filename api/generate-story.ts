@@ -1,3 +1,4 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
@@ -147,23 +148,17 @@ async function generateAndUploadIllustration(
   }
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const body: RequestBody = await req.json();
+    const body: RequestBody = req.body;
     const { childName, childAge, readingLevel, favoriteThings, parentSummary, customPrompt, sourceIllustration, physicalCharacteristics } = body;
 
     if (!childName || !childAge || !readingLevel || !favoriteThings?.length) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const anthropicApiKey = process.env.VITE_ANTHROPIC_API_KEY;
@@ -172,10 +167,7 @@ export default async function handler(req: Request): Promise<Response> {
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!anthropicApiKey) {
-      return new Response(JSON.stringify({ error: 'Anthropic API key not configured' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(500).json({ error: 'Anthropic API key not configured' });
     }
 
     const anthropic = new Anthropic({ apiKey: anthropicApiKey });
@@ -241,7 +233,7 @@ Respond in this exact JSON format:
   ]
 }`;
 
-    // Helper function to convert ArrayBuffer to base64 (edge runtime compatible)
+    // Helper function to convert ArrayBuffer to base64
     function arrayBufferToBase64(buffer: ArrayBuffer): string {
       const bytes = new Uint8Array(buffer);
       let binary = '';
@@ -313,17 +305,11 @@ Respond in this exact JSON format:
       }
       storyData = JSON.parse(jsonMatch[0]);
     } catch {
-      return new Response(JSON.stringify({ error: 'Failed to parse story response' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(500).json({ error: 'Failed to parse story response' });
     }
 
     if (!storyData.title || !storyData.content) {
-      return new Response(JSON.stringify({ error: 'Invalid story format' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return res.status(500).json({ error: 'Invalid story format' });
     }
 
     // Generate actual illustrations using DALL-E 3 and upload to Supabase
@@ -356,22 +342,13 @@ Respond in this exact JSON format:
       storyData.warning = illustrationWarning;
     }
 
-    return new Response(JSON.stringify(storyData), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return res.status(200).json(storyData);
   } catch (error) {
     console.error('Error generating story:', error);
-    return new Response(
-      JSON.stringify({ error: 'Failed to generate story. Please try again.' }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    return res.status(500).json({ error: 'Failed to generate story. Please try again.' });
   }
 }
 
 export const config = {
-  runtime: 'edge',
+  maxDuration: 300,
 };
