@@ -36,15 +36,17 @@ jobs:
           echo "✅ All migration files validated"
 
       - name: Start local Supabase
-        run: supabase start
+        run: |
+          supabase init --force || true
+          supabase start
 
       - name: Check migration status
-        run: supabase migration list
+        run: supabase migration list --local
 
       - name: Test migrations locally
         run: |
           echo "Testing migrations in isolated environment..."
-          supabase db reset --debug
+          supabase db reset --local --debug
 
       - name: Run database tests (if you have any)
         run: |
