@@ -23,3 +23,4 @@ CREATE INDEX idx_rate_limits_user_action_time
   ON public.rate_limits(user_id, action_type, created_at DESC);
 
 COMMENT ON TABLE public.rate_limits IS 'Tracks API usage for rate limiting';
+

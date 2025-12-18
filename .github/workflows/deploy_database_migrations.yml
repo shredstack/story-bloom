@@ -9,6 +9,11 @@ on:
   # Allow manual trigger from GitHub UI
   workflow_dispatch:
 
+permissions:
+  deployments: write
+  issues: write
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
