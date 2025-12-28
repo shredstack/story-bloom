@@ -46,3 +46,61 @@
     @apply bg-gradient-to-br from-primary-50 via-white to-secondary-50 min-h-screen text-gray-800;
   }
 }
+
+/* Print styles for story reader */
+@media print {
+  /* Hide non-essential UI elements */
+  header,
+  nav,
+  .no-print,
+  button,
+  .fixed {
+    display: none !important;
+  }
+
+  /* Reset body styles for print */
+  body {
+    background: white !important;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Style the printable story content */
+  .print-story {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-story article {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 1cm !important;
+  }
+
+  .print-story h1 {
+    font-size: 24pt !important;
+    margin-bottom: 0.5cm !important;
+  }
+
+  .print-story p {
+    font-size: 14pt !important;
+    line-height: 1.6 !important;
+  }
+
+  .print-story img {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+  }
+
+  .print-story footer {
+    margin-top: 1cm !important;
+    border-top: 1px solid #ccc !important;
+  }
+
+  /* Hide footer buttons but keep "The End" text */
+  .print-story footer > div {
+    display: none !important;
+  }
+}

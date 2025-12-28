@@ -197,14 +197,14 @@ Go to this URL to access your local supabase: http://127.0.0.1:54323
 
 Run this to start the application using your local setup: `npm run dev:local`
 
-To add a new database migration, run this:
+To run a new database migration locally, run this:
 ```bash
 supabase migration new <description>
 ```
 
 Once you add the migration to the file supabase created, run this to apply it locally:
 ```bash
-supabase db push
+supabase migration up
 ```
 
 To totally reset (recreate) your local database, run this:

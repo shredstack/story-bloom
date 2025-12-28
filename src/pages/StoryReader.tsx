@@ -77,6 +77,10 @@ export function StoryReader() {
     }
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
   const handleSelectCustomIllustration = async (customIllustration: CustomIllustration) => {
     if (!story) return;
 
@@ -156,47 +160,19 @@ export function StoryReader() {
   };
 
   const renderCustomIllustrationSection = () => {
-    return (
-      <div className="mt-8">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-700">Custom Illustration</h3>
-          {customIllustration ? (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setShowIllustrationPicker(true)}>
-                Change
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={handleRemoveCustomIllustration}
-                loading={savingIllustration}
-                className="text-red-500 hover:text-red-600 hover:bg-red-50"
-              >
-                Remove
-              </Button>
-            </div>
-          ) : (
+    // If no custom illustration, hide the entire section when printing
+    if (!customIllustration) {
+      return (
+        <div className="mt-8 no-print">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-700">Custom Illustration</h3>
             <Button size="sm" variant="outline" onClick={() => setShowIllustrationPicker(true)}>
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
               </svg>
               Add Illustration
             </Button>
-          )}
-        </div>
-
-        {customIllustration ? (
-          <div className="rounded-2xl overflow-hidden shadow-lg border-2 border-secondary-200">
-            <img
-              src={customIllustration.imageUrl}
-              alt={customIllustration.description}
-              className="w-full h-auto"
-            />
-            <p className="text-sm text-gray-500 italic text-center py-3 px-4 bg-secondary-50">
-              {customIllustration.description}
-            </p>
           </div>
-        ) : (
           <div
             onClick={() => setShowIllustrationPicker(true)}
             className="p-8 rounded-xl bg-gray-50 border-2 border-dashed border-gray-200 text-center cursor-pointer hover:border-secondary-300 hover:bg-secondary-50/30 transition-colors"
@@ -208,15 +184,47 @@ export function StoryReader() {
             </div>
             <p className="text-gray-500 text-sm">Add a custom illustration from your library</p>
           </div>
-        )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-700">Custom Illustration</h3>
+          <div className="flex gap-2 no-print">
+            <Button size="sm" variant="outline" onClick={() => setShowIllustrationPicker(true)}>
+              Change
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleRemoveCustomIllustration}
+              loading={savingIllustration}
+              className="text-red-500 hover:text-red-600 hover:bg-red-50"
+            >
+              Remove
+            </Button>
+          </div>
+        </div>
+        <div className="rounded-2xl overflow-hidden shadow-lg border-2 border-secondary-200">
+          <img
+            src={customIllustration.imageUrl}
+            alt={customIllustration.description}
+            className="w-full h-auto"
+          />
+          <p className="text-sm text-gray-500 italic text-center py-3 px-4 bg-secondary-50">
+            {customIllustration.description}
+          </p>
+        </div>
       </div>
     );
   };
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-3xl mx-auto px-4 py-8 print-story">
+        <div className="flex items-center justify-between mb-6 no-print">
           <Button variant="ghost" onClick={() => navigate(-1)}>
             <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -225,6 +233,16 @@ export function StoryReader() {
           </Button>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              className="p-2 rounded-lg text-gray-400 hover:text-primary-500 hover:bg-primary-50 transition-colors"
+              title="Print story"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+            </button>
+
             <button
               onClick={handleToggleFavorite}
               className={`p-2 rounded-lg transition-colors ${
@@ -259,7 +277,7 @@ export function StoryReader() {
           </div>
         </div>
 
-        <Card className="mb-6">
+        <Card className="mb-6 no-print">
           <div className="flex items-center justify-between mb-4">
             <span className="text-sm font-medium text-gray-500">Font Size</span>
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
