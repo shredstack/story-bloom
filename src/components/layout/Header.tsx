@@ -27,7 +27,7 @@ export function Header() {
   const isActiveLink = (path: string) => location.pathname === path;
 
   return (
-    <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-50">
+    <header className="bg-white/80 backdrop-blur-sm shadow-sm sticky top-0 z-50 no-print">
       <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
         <Link to={user ? '/dashboard' : '/'} className="flex items-center gap-2">
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex items-center justify-center">
