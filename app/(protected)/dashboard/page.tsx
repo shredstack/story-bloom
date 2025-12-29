@@ -198,17 +198,17 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3 max-w-md mx-auto">
-              <Button size="lg" onClick={handleGenerateStory} loading={generating}>
-                Generate Random Story
-              </Button>
               <div className="flex gap-3">
-                <Button size="lg" variant="outline" onClick={() => setGenerationMode('topic')} className="flex-1">
+                <Button size="lg" onClick={() => setGenerationMode('topic')} className="flex-1 bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600">
                   Choose a Topic
                 </Button>
-                <Button size="lg" variant="outline" onClick={() => setGenerationMode('illustration')} className="flex-1">
+                <Button size="lg" onClick={() => setGenerationMode('illustration')} className="flex-1 bg-gradient-to-r from-secondary-500 to-primary-500 hover:from-secondary-600 hover:to-primary-600">
                   From Illustration
                 </Button>
               </div>
+              <Button size="lg" variant="outline" onClick={handleGenerateStory} loading={generating}>
+                Generate Random Story
+              </Button>
             </div>
           )}
 
