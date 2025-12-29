@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../ProtectedLayoutClient'
 import { useCustomIllustrations } from '@/lib/hooks/useCustomIllustrations'
 import { Button, Input, Card } from '@/components/ui'
@@ -23,6 +23,19 @@ export default function IllustrationsPage() {
   const [editDescription, setEditDescription] = useState('')
 
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  // Create preview URL when file is selected
+  useEffect(() => {
+    if (selectedFile) {
+      const url = URL.createObjectURL(selectedFile)
+      setPreviewUrl(url)
+      return () => URL.revokeObjectURL(url)
+    } else {
+      setPreviewUrl(null)
+    }
+  }, [selectedFile])
 
   const handleUpload = async () => {
     if (!selectedFile || !name.trim()) {
@@ -110,8 +123,29 @@ export default function IllustrationsPage() {
               onFileSelect={setSelectedFile}
               hint="PNG, JPG up to 5MB"
             />
-            {selectedFile && (
-              <p className="text-sm text-gray-600">Selected: {selectedFile.name}</p>
+            {selectedFile && previewUrl && (
+              <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="relative w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200">
+                  <img
+                    src={previewUrl}
+                    alt="Preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-700 truncate">{selectedFile.name}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedFile(null)}
+                    className="mt-2 text-xs text-red-500 hover:text-red-600 font-medium"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
             )}
             <Input
               label="Name"
