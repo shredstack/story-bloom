@@ -87,7 +87,7 @@ async function generateAndUploadIllustration(
     // Generate image with DALL-E 3
     const response = await openai.images.generate({
       model: 'dall-e-3',
-      prompt: `Children's book illustration, colorful and friendly style: ${description}. ${characterDescription}Style: warm, inviting, suitable for children, storybook illustration, soft colors, whimsical.`,
+      prompt: `Children's book illustration in a colorful, friendly watercolor style. Scene: ${description}. ${characterDescription}IMPORTANT STYLE REQUIREMENTS: Do NOT include any text, words, letters, numbers, or writing of any kind in the image. This must be a purely visual illustration with no textual elements whatsoever. Style should be warm, inviting, whimsical, with soft colors suitable for a children's storybook.`,
       n: 1,
       size: '1024x1024',
       quality: 'standard',
