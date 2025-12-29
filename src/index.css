@@ -49,8 +49,8 @@
 
 /* Print styles for story reader */
 @media print {
-  /* Hide non-essential UI elements */
-  header,
+  /* Hide non-essential UI elements (but not article headers which contain story titles) */
+  body > header,
   nav,
   .no-print,
   button,
