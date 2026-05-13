@@ -182,7 +182,7 @@ Energy level: ${energyDescription}
 Important: Just give the response directly, no quotes or attribution needed. Use simple words and be very friendly.`
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5',
       max_tokens: 100,
       messages: [{ role: 'user', content: prompt }],
     })
