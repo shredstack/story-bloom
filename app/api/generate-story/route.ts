@@ -84,27 +84,20 @@ async function generateAndUploadIllustration(
     // Build character appearance description if physical characteristics are provided
     const characterDescription = buildCharacterDescription(childName, physicalCharacteristics)
 
-    // Generate image with DALL-E 3
+    // Generate image with gpt-image-1
     const response = await openai.images.generate({
-      model: 'dall-e-3',
+      model: 'gpt-image-1',
       prompt: `Children's book illustration in a colorful, friendly watercolor style. Scene: ${description}. ${characterDescription}IMPORTANT STYLE REQUIREMENTS: Do NOT include any text, words, letters, numbers, or writing of any kind in the image. This must be a purely visual illustration with no textual elements whatsoever. Style should be warm, inviting, whimsical, with soft colors suitable for a children's storybook.`,
       n: 1,
       size: '1024x1024',
-      quality: 'standard',
+      quality: 'medium',
     })
 
-    const tempImageUrl = response.data?.[0]?.url
-    if (!tempImageUrl) return { imageUrl: null }
+    // gpt-image-1 returns base64-encoded image data (not a URL)
+    const b64Image = response.data?.[0]?.b64_json
+    if (!b64Image) return { imageUrl: null }
 
-    // Fetch the image from OpenAI's temporary URL
-    const imageResponse = await fetch(tempImageUrl)
-    if (!imageResponse.ok) {
-      console.error('Failed to fetch image from OpenAI')
-      return { imageUrl: null }
-    }
-
-    const imageBlob = await imageResponse.blob()
-    const imageBuffer = await imageBlob.arrayBuffer()
+    const imageBuffer = Buffer.from(b64Image, 'base64')
 
     // Create Supabase client
     const supabase = createClient(supabaseUrl, supabaseKey)
