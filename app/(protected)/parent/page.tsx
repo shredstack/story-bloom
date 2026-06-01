@@ -141,6 +141,13 @@ export default function ParentPage() {
           href="/parent/rewards"
           color="bg-green-500"
         />
+        <ParentCard
+          title="Scavenger Photos"
+          description="Review scavenger hunt finds, approve or reject, and manage photos"
+          icon="🔎"
+          href="/parent/scavenger-finds"
+          color="bg-emerald-500"
+        />
       </div>
 
       {/* PIN Settings Section */}

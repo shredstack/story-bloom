@@ -99,6 +99,12 @@ export async function PATCH(request: NextRequest) {
       'weekly_cash_cap',
       'words_per_session',
       'show_word_coach_automatically',
+      'scavenger_hunt_enabled',
+      'cash_per_scavenger_find',
+      'scavenger_completion_bonus',
+      'scavenger_completion_min_found',
+      'scavenger_prompts_per_session',
+      'scavenger_ai_confidence_floor',
     ]
 
     const validUpdates: Record<string, unknown> = {}
