@@ -1351,6 +1351,14 @@ export interface AppSettings {
   words_per_session: number;
   show_word_coach_automatically: boolean;
 
+  // Scavenger Hunt settings
+  scavenger_hunt_enabled: boolean;
+  cash_per_scavenger_find: number;
+  scavenger_completion_bonus: number;
+  scavenger_completion_min_found: number;
+  scavenger_prompts_per_session: number;
+  scavenger_ai_confidence_floor: number;
+
   // Parent PIN (for protecting parent-only features)
   parent_pin_hash: string | null;
   pin_reset_token: string | null;
@@ -1378,6 +1386,12 @@ export const DEFAULT_APP_SETTINGS: Omit<AppSettings, 'id' | 'user_id' | 'created
   weekly_cash_cap: 20.00,
   words_per_session: 10,
   show_word_coach_automatically: true,
+  scavenger_hunt_enabled: true,
+  cash_per_scavenger_find: 0.10,
+  scavenger_completion_bonus: 0.50,
+  scavenger_completion_min_found: 1,
+  scavenger_prompts_per_session: 8,
+  scavenger_ai_confidence_floor: 0.45,
 };
 
 // Weekly cash reward tracking
@@ -1485,4 +1499,139 @@ export function calculateWordStage(timesCorrect: number, masteryThreshold: numbe
   if (timesCorrect >= Math.ceil(masteryThreshold * 0.75)) return 'blooming';
   if (timesCorrect >= 1) return 'growing';
   return 'seedling';
+}
+
+// ============================================================================
+// Scavenger Hunt
+// ============================================================================
+
+// Where prompts are drawn from (and the prompt's own location tag).
+export type ScavengerLocation = 'indoor' | 'outdoor' | 'either';
+
+// Reading levels used by the scavenger hunt prompt bank.
+export type ScavengerReadingLevel =
+  | 'pre_k'
+  | 'kindergarten'
+  | 'grade_1'
+  | 'grade_2'
+  | 'grade_3';
+
+// Ordered easiest -> hardest. Used to select prompts at or below a child's level.
+export const SCAVENGER_READING_LEVELS: ScavengerReadingLevel[] = [
+  'pre_k',
+  'kindergarten',
+  'grade_1',
+  'grade_2',
+  'grade_3',
+];
+
+// Map the child's profile reading_level (READING_LEVELS) to the prompt bank enum.
+export function mapReadingLevelToScavenger(
+  readingLevel: string | null | undefined
+): ScavengerReadingLevel {
+  switch (readingLevel) {
+    case 'Pre-K':
+      return 'pre_k';
+    case 'Kindergarten':
+      return 'kindergarten';
+    case '1st Grade':
+      return 'grade_1';
+    case '2nd Grade':
+      return 'grade_2';
+    case '3rd Grade':
+    case '4th Grade':
+    case '5th Grade':
+    case '6th Grade':
+      return 'grade_3';
+    default:
+      return 'grade_1';
+  }
+}
+
+// All prompt-bank levels at or below the child's level (keeps reading decodable).
+export function scavengerLevelsAtOrBelow(
+  level: ScavengerReadingLevel
+): ScavengerReadingLevel[] {
+  const idx = SCAVENGER_READING_LEVELS.indexOf(level);
+  return SCAVENGER_READING_LEVELS.slice(0, idx + 1);
+}
+
+// A prompt as exposed to the client (verification criteria are kept server-side).
+export interface ScavengerHuntPrompt {
+  id: string;
+  promptText: string;
+  location: ScavengerLocation;
+  category: string | null;
+}
+
+export interface ScavengerHuntSession {
+  id: string;
+  child_id: string;
+  location_set: ScavengerLocation;
+  prompts_total: number;
+  prompts_attempted: number;
+  prompts_found: number;
+  prompts_skipped: number;
+  prompts_replaced: number;
+  find_cash_earned: number;
+  completion_bonus_earned: number;
+  cash_earned: number;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface ScavengerHuntFind {
+  id: string;
+  session_id: string;
+  prompt_id: string | null;
+  child_id: string;
+  prompt_text: string;
+  photo_storage_path: string;
+  photo_url?: string | null; // signed URL, added by the finds route
+  attempt_number: number;
+  is_match: boolean;
+  ai_confidence: number | null;
+  ai_reasoning: string | null;
+  ai_kid_message: string | null;
+  ai_model: string | null;
+  ai_flagged: boolean;
+  cash_earned: number;
+  parent_reviewed: boolean;
+  parent_override: 'approved' | 'rejected' | null;
+  created_at: string;
+}
+
+// Response from POST /api/scavenger-hunt/sessions/[id]/verify
+export interface ScavengerVerifyResult {
+  isMatch: boolean;
+  confidence: number;
+  reasoning: string;
+  kidMessage: string;
+  flagged: boolean;
+  model: string;
+  cashEarned: number;
+  weeklyCapReached: boolean;
+  attemptNumber: number;
+  findId: string;
+}
+
+// Defaults mirrored from app_settings columns (single source for the UI/hook).
+export const SCAVENGER_HUNT_DEFAULTS = {
+  promptsPerSession: 8,
+  cashPerFind: 0.10,
+  completionBonus: 0.50,
+  completionMinFound: 1,
+  confidenceFloor: 0.45,
+  maxReplacementsPerSession: 5,
+  maxAttemptsPerPrompt: 5,
+} as const;
+
+// Running totals tracked client-side during a hunt.
+export interface ScavengerHuntStats {
+  promptsFound: number;
+  promptsAttempted: number;
+  promptsSkipped: number;
+  promptsReplaced: number;
+  findCashEarned: number;
 }

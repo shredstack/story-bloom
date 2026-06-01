@@ -138,6 +138,14 @@ export default function GamesPage() {
           available={wordsNeedingPractice > 0}
           badge={wordsNeedingPractice}
         />
+        <GameCard
+          title="Scavenger Hunt"
+          description="Read a clue, find the thing, snap a photo, and earn cash!"
+          icon="🔎"
+          href="/games/scavenger-hunt"
+          color="bg-emerald-500"
+          available={true}
+        />
       </div>
 
       {/* My Pets Section */}

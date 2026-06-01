@@ -1,13 +1,15 @@
 # StoryBloom Games
 
-StoryBloom has two interactive games designed to help children practice reading while earning virtual pet rewards.
+StoryBloom has several interactive games designed to help children practice reading while earning virtual pet rewards or parent-funded cash.
 
 ## Games Overview
 
-| Game | Description | Reward Threshold |
-|------|-------------|------------------|
+| Game | Description | Reward |
+|------|-------------|--------|
 | **Word Quest** | Read individual sight words aloud | 90% accuracy for new pet |
 | **Sentence Shenanigans** | Read full sentences from uploaded materials | 50% accuracy for new pet |
+| **Word Rescue** | Practice tricky/struggling words aloud with a pet buddy | Coins/gems + cash per mastered word |
+| **Scavenger Hunt** | Read a clue, photograph the matching object, AI verifies it | Cash per verified find + completion bonus |
 
 ---
 
@@ -88,6 +90,64 @@ Completion bonus:     15 XP (all sentences practiced)
 - Hook: `lib/hooks/useSentenceShenanigans.ts`
 - Components: `app/(protected)/games/sentence-shenanigans/components/`
 - API: `app/api/sentence-shenanigans/`
+
+---
+
+## Scavenger Hunt
+
+**Location:** `app/(protected)/games/scavenger-hunt/`
+
+A reading-practice game disguised as a treasure hunt. The child **reads a short,
+decodable clue** (the reading practice — **no read-aloud crutch**), **photographs**
+the matching object indoors or in the yard, and **Claude vision loosely/generously
+verifies** the photo. Verified finds pay cash through the existing `cash_rewards`
+machinery. Structurally a sibling of Word Rescue.
+
+### How It Works
+
+1. Child picks **Inside / Outside / Anywhere** and starts a hunt
+   (`POST /api/scavenger-hunt/sessions` selects N prompts at the child's profile
+   reading level + location, avoiding recently-found prompts).
+2. For each clue: the child reads it, then takes a photo
+   (`<input type="file" accept="image/*" capture="environment">`), or taps
+   **Can't find it** (skip) / **Give me a new one** (replace) so they're never stuck.
+3. `POST .../sessions/[id]/verify` re-encodes the photo (sharp — strips EXIF/GPS,
+   resizes), uploads it to a private bucket, and asks the verifier for a verdict.
+4. A counted match (`isMatch && confidence >= floor`) pays `cash_per_scavenger_find`,
+   first match per clue only, capped by `weekly_cash_cap`.
+5. `POST .../sessions/[id]/complete` awards a one-time `scavenger_completion_bonus`
+   (if `prompts_found >= scavenger_completion_min_found`) — idempotent, never double-pays.
+6. Photos are **kept** and shown in a kid-facing **"My Finds"** scrapbook; parents
+   review/approve/reject/delete them in a PIN-gated gallery.
+
+### Key Mechanics
+
+- **Reading level:** from the child's `children.reading_level` (not a per-game setting),
+  mapped to the prompt bank's enum; prompts at or below that level keep reading decodable.
+- **Generous verification:** rewards reading effort over photography;
+  `scavenger_ai_confidence_floor` default `0.45`. Below the floor → "try again", not a fail.
+- **Safety/anti-cheat:** the verifier flags faces / screens (photo-of-a-photo);
+  flagged or parent-rejected finds are hidden from the kid gallery. AI never moves
+  real money — it only increments an "earned, unpaid" tally a parent settles.
+- **Escape hatch:** skip is unlimited; replace is capped per session
+  (`SCAVENGER_HUNT_DEFAULTS.maxReplacementsPerSession`); retries per clue are capped.
+
+### Settings (`app_settings`, parent rewards page)
+
+`scavenger_hunt_enabled`, `cash_per_scavenger_find`, `scavenger_completion_bonus`,
+`scavenger_completion_min_found`, `scavenger_prompts_per_session`,
+`scavenger_ai_confidence_floor`.
+
+### Key Files
+
+- Intro / practice / gallery: `app/(protected)/games/scavenger-hunt/{page,practice/page,finds/page}.tsx`
+- Components: `app/(protected)/games/scavenger-hunt/components/`
+- Hook: `lib/hooks/useScavengerHunt.ts`
+- Verifier (Claude vision, isolated/testable): `lib/services/scavenger-verifier.ts`
+- Prompt selection: `lib/services/scavenger-prompts.ts`
+- API: `app/api/scavenger-hunt/` (`sessions`, `sessions/[id]/verify`,
+  `sessions/[id]/prompt-action`, `sessions/[id]/complete`, `finds`, `finds/[findId]`)
+- Parent review gallery: `app/(protected)/parent/scavenger-finds/page.tsx`
 
 ---
 
@@ -198,6 +258,18 @@ material_sentences      - Extracted sentences per material
 sentence_practice_sessions - Completed sessions
 sentence_attempts       - Per-sentence results within a session
 ```
+
+### Scavenger Hunt
+
+```
+scavenger_hunt_prompts  - Shared, curated prompt bank (tagged by level/location/category)
+scavenger_hunt_sessions - One row per hunt (counters + cash totals)
+scavenger_hunt_finds    - One row per photo submission (photo path + AI verdict + cash)
+```
+
+Storage bucket: `scavenger-hunt-photos` (private; access via 7-day signed URLs).
+Cash flows through the shared `cash_rewards` table via the `upsert_scavenger_cash_reward`
+RPC (adds cash without touching the word-rescue `words_mastered_this_week` counter).
 
 ### Pets
 

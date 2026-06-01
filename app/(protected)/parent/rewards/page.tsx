@@ -185,6 +185,125 @@ export default function ParentRewardsPage() {
         )}
       </Card>
 
+      {/* Scavenger Hunt settings */}
+      <Card className="p-6 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold">🔎 Scavenger Hunt</h2>
+            <p className="text-sm text-gray-600">
+              Reading clues + photos. Finds and finishing a hunt pay cash (within the
+              weekly cap above). Reading level comes from {selectedChild.name}&apos;s profile.
+            </p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings?.scavenger_hunt_enabled ?? true}
+              onChange={(e) =>
+                updateSettings({ scavenger_hunt_enabled: e.target.checked })
+              }
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600" />
+          </label>
+        </div>
+
+        {(settings?.scavenger_hunt_enabled ?? true) && (
+          <div className="space-y-4 pt-4 border-t">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Cash per find
+              </label>
+              <NumberInput
+                value={settings?.cash_per_scavenger_find ?? 0.10}
+                onChange={(value) =>
+                  updateSettings({ cash_per_scavenger_find: value })
+                }
+                min={0}
+                max={5.0}
+                step={0.05}
+                decimals={2}
+                prefix="$"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Bonus for finishing a hunt
+              </label>
+              <NumberInput
+                value={settings?.scavenger_completion_bonus ?? 0.50}
+                onChange={(value) =>
+                  updateSettings({ scavenger_completion_bonus: value })
+                }
+                min={0}
+                max={10}
+                step={0.25}
+                decimals={2}
+                prefix="$"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Finds needed to earn the bonus
+              </label>
+              <NumberInput
+                value={settings?.scavenger_completion_min_found ?? 1}
+                onChange={(value) =>
+                  updateSettings({ scavenger_completion_min_found: Math.round(value) })
+                }
+                min={0}
+                max={20}
+                step={1}
+                decimals={0}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Clues per hunt
+              </label>
+              <NumberInput
+                value={settings?.scavenger_prompts_per_session ?? 8}
+                onChange={(value) =>
+                  updateSettings({ scavenger_prompts_per_session: Math.round(value) })
+                }
+                min={1}
+                max={20}
+                step={1}
+                decimals={0}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                AI strictness (confidence floor)
+              </label>
+              <NumberInput
+                value={settings?.scavenger_ai_confidence_floor ?? 0.45}
+                onChange={(value) =>
+                  updateSettings({ scavenger_ai_confidence_floor: value })
+                }
+                min={0}
+                max={1}
+                step={0.05}
+                decimals={2}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Lower = more generous (recommended for new readers). Default 0.45.
+              </p>
+            </div>
+
+            <Link href="/parent/scavenger-finds">
+              <Button variant="outline" className="w-full">
+                Review Photos &amp; Finds
+              </Button>
+            </Link>
+          </div>
+        )}
+      </Card>
+
       {/* Current Week */}
       {cashRewardEnabled && (
         <Card className="p-6 mb-6">
