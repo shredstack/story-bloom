@@ -5,6 +5,7 @@ import type { User } from '@supabase/supabase-js'
 import type { Child } from '@/lib/types'
 import { Header } from '@/components/layout/Header'
 import { createClient } from '@/lib/supabase/client'
+import { exitFullscreen } from '@/lib/fullscreen'
 
 const SELECTED_CHILD_KEY = 'storybloom-selected-child'
 
@@ -43,6 +44,48 @@ export function useAuth() {
   return context
 }
 
+interface ImmersiveContextType {
+  immersive: boolean
+  setImmersive: (value: boolean) => void
+}
+
+const ImmersiveContext = createContext<ImmersiveContextType | null>(null)
+
+/**
+ * Lets a page hide the app chrome (nav header) to lock kids into a focused,
+ * "fullscreen" game experience so stray taps can't navigate away mid-game.
+ * Call `setImmersive(true)` on mount and `setImmersive(false)` on unmount.
+ */
+export function useImmersive() {
+  const context = useContext(ImmersiveContext)
+  if (!context) {
+    throw new Error('useImmersive must be used within ProtectedLayoutClient')
+  }
+  return context
+}
+
+/**
+ * Convenience hook for game pages: hides the app chrome while `active` is true
+ * and always restores it when the page unmounts. Lets a child stay locked into
+ * a focused game without stray taps navigating away mid-play.
+ *
+ * Entering browser fullscreen requires a user gesture, so games request it from
+ * their "start" tap (see `enterFullscreen` in `lib/fullscreen`). This hook owns
+ * the matching exit: it drops out of fullscreen when the game stops being active
+ * (e.g. the summary screen) and when the page unmounts.
+ */
+export function useImmersiveMode(active: boolean) {
+  const { setImmersive } = useImmersive()
+  useEffect(() => {
+    setImmersive(active)
+    if (!active) exitFullscreen()
+    return () => {
+      setImmersive(false)
+      exitFullscreen()
+    }
+  }, [active, setImmersive])
+}
+
 interface Props {
   user: User
   initialChildren: Child[]
@@ -53,6 +96,7 @@ export default function ProtectedLayoutClient({ user, initialChildren, children:
   const [childrenList, setChildrenList] = useState<Child[]>(initialChildren)
   const [selectedChild, setSelectedChild] = useState<Child | null>(null)
   const [loading, setLoading] = useState(false)
+  const [immersive, setImmersive] = useState(false)
   const supabase = createClient()
 
   // Initialize selected child from localStorage or first child
@@ -175,17 +219,21 @@ export default function ProtectedLayoutClient({ user, initialChildren, children:
   return (
     <AuthContext.Provider value={{ user }}>
       <ChildContext.Provider value={childContextValue}>
-        <div className="min-h-screen flex flex-col">
-          <Header
-            user={user}
-            children={childrenList}
-            selectedChild={selectedChild}
-            onSelectChild={selectChild}
-          />
-          <main className="flex-1">
-            {pageChildren}
-          </main>
-        </div>
+        <ImmersiveContext.Provider value={{ immersive, setImmersive }}>
+          <div className="min-h-screen flex flex-col">
+            {!immersive && (
+              <Header
+                user={user}
+                children={childrenList}
+                selectedChild={selectedChild}
+                onSelectChild={selectChild}
+              />
+            )}
+            <main className="flex-1">
+              {pageChildren}
+            </main>
+          </div>
+        </ImmersiveContext.Provider>
       </ChildContext.Provider>
     </AuthContext.Provider>
   )

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useChild } from '../../../ProtectedLayoutClient'
+import { useChild, useImmersiveMode } from '../../../ProtectedLayoutClient'
+import { QuitGameDialog } from '@/components/games/QuitGameDialog'
 import { useWordQuest } from '@/lib/hooks/useWordQuest'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
 import { usePets } from '@/lib/hooks/usePets'
@@ -32,6 +33,7 @@ export default function PracticePage() {
   const [isFirstPet, setIsFirstPet] = useState(false)
   const [earnedPetReward, setEarnedPetReward] = useState(false)
   const [rewardPetType, setRewardPetType] = useState<PetType>('cat')
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
 
   const {
     words,
@@ -173,6 +175,18 @@ export default function PracticePage() {
     router.push('/games/word-quest')
   }
 
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false)
+    handleEndSession()
+  }
+
+  // Lock into a focused experience while actively playing so stray taps on the
+  // nav bar can't navigate away mid-session. Chrome returns on loading/error
+  // screens and once the session is complete (the reward overlays cover the page).
+  useImmersiveMode(
+    isSupported && !isLoading && !error && !!selectedChild && !isSessionComplete
+  )
+
   if (!selectedChild) {
     router.push('/games/word-quest')
     return null
@@ -230,7 +244,7 @@ export default function PracticePage() {
       {/* Header with back button */}
       <div className="flex items-center justify-between mb-6">
         <button
-          onClick={handleEndSession}
+          onClick={() => setShowQuitConfirm(true)}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
         >
           <svg
@@ -246,7 +260,7 @@ export default function PracticePage() {
               d="M15 19l-7-7 7-7"
             />
           </svg>
-          <span className="text-sm font-medium">Exit</span>
+          <span className="text-sm font-medium">Quit</span>
         </button>
         <div className="text-sm text-gray-500">{selectedChild.name}</div>
       </div>
@@ -310,7 +324,7 @@ export default function PracticePage() {
           >
             Skip Word
           </Button>
-          <Button variant="outline" onClick={handleEndSession}>
+          <Button variant="outline" onClick={() => setShowQuitConfirm(true)}>
             End Session
           </Button>
         </div>
@@ -367,6 +381,14 @@ export default function PracticePage() {
         onCreatePet={handleCreatePet}
         pollImageStatus={pollImageStatus}
         onPetTypeChange={handlePetTypeChange}
+      />
+
+      {/* Quit confirmation — prevents an accidental tap from ending the session. */}
+      <QuitGameDialog
+        open={showQuitConfirm}
+        onKeepPlaying={() => setShowQuitConfirm(false)}
+        onQuit={handleConfirmQuit}
+        title="Quit Word Quest?"
       />
     </div>
   )

@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { useChild } from '../../../ProtectedLayoutClient'
+import { useChild, useImmersiveMode } from '../../../ProtectedLayoutClient'
+import { QuitGameDialog } from '@/components/games/QuitGameDialog'
+import { enterFullscreen } from '@/lib/fullscreen'
 import { useWordRescue } from '@/lib/hooks/useWordRescue'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
 import { BuddySelector } from '../components/BuddySelector'
@@ -29,6 +31,11 @@ export default function WordRescuePracticePage() {
   const [lastAttemptCorrect, setLastAttemptCorrect] = useState<boolean | null>(null)
   const [needsReset, setNeedsReset] = useState(false)
   const [checkError, setCheckError] = useState(false)
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
+
+  // Lock into a focused experience while playing so stray taps on the nav bar
+  // can't navigate away and lose progress. Chrome returns on the summary screen.
+  useImmersiveMode(phase === 'playing')
 
   const {
     words,
@@ -131,6 +138,9 @@ export default function WordRescuePracticePage() {
   }, [needsReset, resetTranscript])
 
   const handleBuddySelect = async (pet: Pet) => {
+    // Request fullscreen from this tap (gesture-gated) so the game fills the
+    // tablet screen; the immersive hook drops out of fullscreen when it ends.
+    enterFullscreen()
     await startSession(pet.id)
     setPhase('playing')
   }
@@ -180,6 +190,14 @@ export default function WordRescuePracticePage() {
 
   const handleExit = () => {
     router.push('/games/word-rescue')
+  }
+
+  // End the session deliberately (gated by confirmation): finalize so progress is
+  // saved, then show the summary.
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false)
+    endSession()
+    setPhase('complete')
   }
 
   // No child selected
@@ -277,12 +295,9 @@ export default function WordRescuePracticePage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => {
-            endSession()
-            setPhase('complete')
-          }}
+          onClick={() => setShowQuitConfirm(true)}
         >
-          Exit
+          Quit
         </Button>
       </div>
 
@@ -352,6 +367,13 @@ export default function WordRescuePracticePage() {
       {showCelebration && celebrationData && (
         <RewardCelebration data={celebrationData} onComplete={handleCelebrationComplete} />
       )}
+
+      {/* Quit confirmation — prevents an accidental tap from ending the session. */}
+      <QuitGameDialog
+        open={showQuitConfirm}
+        onKeepPlaying={() => setShowQuitConfirm(false)}
+        onQuit={handleConfirmQuit}
+      />
     </div>
   )
 }

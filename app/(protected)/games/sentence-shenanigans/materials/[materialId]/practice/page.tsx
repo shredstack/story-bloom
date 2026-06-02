@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { useChild } from '../../../../../ProtectedLayoutClient'
+import { useChild, useImmersiveMode } from '../../../../../ProtectedLayoutClient'
+import { QuitGameDialog } from '@/components/games/QuitGameDialog'
 import { useSentenceShenanigans } from '@/lib/hooks/useSentenceShenanigans'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
 import { usePets } from '@/lib/hooks/usePets'
@@ -38,6 +39,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
   const [isFirstPet, setIsFirstPet] = useState(false)
   const [earnedPetReward, setEarnedPetReward] = useState(false)
   const [rewardPetType, setRewardPetType] = useState<PetType>('cat')
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
 
   const {
     sentences,
@@ -204,6 +206,18 @@ export default function PracticeSessionPage({ params }: PageProps) {
     router.push('/games/sentence-shenanigans')
   }
 
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false)
+    handleEndSession()
+  }
+
+  // Lock into a focused experience while actively playing so stray taps on the
+  // nav bar can't navigate away mid-session. Chrome returns on loading/error
+  // screens and once the session is complete (the reward overlays cover the page).
+  useImmersiveMode(
+    isSupported && !isLoading && !error && !!selectedChild && !isSessionComplete
+  )
+
   if (!selectedChild) {
     router.push('/games/sentence-shenanigans')
     return null
@@ -266,13 +280,13 @@ export default function PracticeSessionPage({ params }: PageProps) {
       {/* Header with back button */}
       <div className="flex items-center justify-between mb-6">
         <button
-          onClick={handleEndSession}
+          onClick={() => setShowQuitConfirm(true)}
           className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          <span className="text-sm font-medium">Exit</span>
+          <span className="text-sm font-medium">Quit</span>
         </button>
         <div className="text-sm text-gray-500 text-center">
           <div className="font-medium">{currentMaterial?.name || 'Practice'}</div>
@@ -391,7 +405,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
           >
             Skip Sentence
           </Button>
-          <Button variant="outline" onClick={handleEndSession}>
+          <Button variant="outline" onClick={() => setShowQuitConfirm(true)}>
             End Session
           </Button>
         </div>
@@ -446,6 +460,14 @@ export default function PracticeSessionPage({ params }: PageProps) {
         onCreatePet={handleCreatePet}
         pollImageStatus={pollImageStatus}
         onPetTypeChange={handlePetTypeChange}
+      />
+
+      {/* Quit confirmation — prevents an accidental tap from ending the session. */}
+      <QuitGameDialog
+        open={showQuitConfirm}
+        onKeepPlaying={() => setShowQuitConfirm(false)}
+        onQuit={handleConfirmQuit}
+        title="Quit this practice?"
       />
     </div>
   )
