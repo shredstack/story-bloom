@@ -6,6 +6,7 @@ import { useChild } from '../../ProtectedLayoutClient'
 import { useSentenceShenanigans } from '@/lib/hooks/useSentenceShenanigans'
 import { Button, Card } from '@/components/ui'
 import { MaterialCard } from './components/MaterialCard'
+import { enterFullscreen } from '@/lib/fullscreen'
 
 export default function SentenceShenanigansPage() {
   const router = useRouter()
@@ -143,11 +144,12 @@ export default function SentenceShenanigansPage() {
               <MaterialCard
                 key={material.id}
                 material={material}
-                onPractice={() =>
+                onPractice={() => {
+                  enterFullscreen()
                   router.push(
                     `/games/sentence-shenanigans/materials/${material.id}/practice`
                   )
-                }
+                }}
                 onEdit={() =>
                   router.push(
                     `/games/sentence-shenanigans/materials/${material.id}`

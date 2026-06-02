@@ -7,6 +7,7 @@ import { Button, Card } from '@/components/ui'
 import { PetCard } from '@/components/word-quest'
 import { usePets } from '@/lib/hooks/usePets'
 import { createClient } from '@/lib/supabase/client'
+import { enterFullscreen } from '@/lib/fullscreen'
 
 interface ProgressStats {
   totalWordsPracticed: number
@@ -116,7 +117,10 @@ export default function WordQuestPage() {
           <p className="text-gray-500 text-sm mb-6">10 words per session</p>
           <Button
             size="lg"
-            onClick={() => router.push('/games/word-quest/practice')}
+            onClick={() => {
+              enterFullscreen()
+              router.push('/games/word-quest/practice')
+            }}
             className="bg-gradient-to-r from-primary-500 to-secondary-500 px-8"
           >
             <span className="flex items-center gap-2">

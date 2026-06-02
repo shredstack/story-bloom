@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useChild } from '../../ProtectedLayoutClient'
 import { Button, Card } from '@/components/ui'
 import { CashTracker } from '../word-rescue/components/CashTracker'
+import { enterFullscreen } from '@/lib/fullscreen'
 import type { ScavengerLocation } from '@/lib/types'
 
 const LOCATION_OPTIONS: {
@@ -41,6 +42,9 @@ export default function ScavengerHuntPage() {
   }
 
   const startHunt = () => {
+    // Request fullscreen from this tap (gesture-gated) so the hunt fills the
+    // tablet screen; the immersive hook drops out of fullscreen when it ends.
+    enterFullscreen()
     router.push(`/games/scavenger-hunt/practice?location=${location}`)
   }
 

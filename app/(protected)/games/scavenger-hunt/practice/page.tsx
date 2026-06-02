@@ -2,7 +2,8 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useChild } from '../../../ProtectedLayoutClient'
+import { useChild, useImmersiveMode } from '../../../ProtectedLayoutClient'
+import { QuitGameDialog } from '@/components/games/QuitGameDialog'
 import { useScavengerHunt } from '@/lib/hooks/useScavengerHunt'
 import { Button, Card } from '@/components/ui'
 import { SCAVENGER_HUNT_DEFAULTS, type ScavengerLocation, type ScavengerVerifyResult } from '@/lib/types'
@@ -42,7 +43,13 @@ function PracticeInner() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [result, setResult] = useState<ScavengerVerifyResult | null>(null)
   const [summary, setSummary] = useState<HuntSummaryData | null>(null)
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
   const startedRef = useRef(false)
+
+  // Lock into a focused, "fullscreen" experience while the hunt is in progress so
+  // stray taps on the nav bar can't navigate away and lose game progress. The chrome
+  // returns once the hunt is finished (summary) or the page unmounts.
+  useImmersiveMode(phase !== 'complete')
 
   // Start the hunt once on mount.
   useEffect(() => {
@@ -103,6 +110,15 @@ function PracticeInner() {
 
   const handleExit = () => {
     router.push('/games/scavenger-hunt')
+  }
+
+  // End the hunt deliberately: finalize the session so any cash earned so far is
+  // saved, then show the summary. Gated behind a confirmation so an accidental tap
+  // can't quit mid-game.
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false)
+    setPhase('complete')
+    completeSession().then(setSummary)
   }
 
   if (!selectedChild) {
@@ -177,12 +193,9 @@ function PracticeInner() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => {
-            setPhase('complete')
-            completeSession().then(setSummary)
-          }}
+          onClick={() => setShowQuitConfirm(true)}
         >
-          Exit
+          Quit
         </Button>
       </div>
 
@@ -244,6 +257,15 @@ function PracticeInner() {
           canReplace={replacementsLeft > 0}
         />
       )}
+
+      {/* Quit confirmation — prevents an accidental tap from ending the hunt. */}
+      <QuitGameDialog
+        open={showQuitConfirm}
+        onKeepPlaying={() => setShowQuitConfirm(false)}
+        onQuit={handleConfirmQuit}
+        title="Quit the hunt?"
+        message="You can keep playing, or quit now and keep the cash you've already found."
+      />
     </div>
   )
 }
