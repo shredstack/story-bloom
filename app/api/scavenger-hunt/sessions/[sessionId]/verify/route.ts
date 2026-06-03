@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import sharp from 'sharp'
 import { createClient } from '@/lib/supabase/server'
 import { verifyScavengerPhoto } from '@/lib/services/scavenger-verifier'
+import { recordEngagement } from '@/lib/services/scavenger-progress'
 import { SCAVENGER_HUNT_DEFAULTS } from '@/lib/types'
 
 interface RouteParams {
@@ -261,6 +262,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         cash_earned: parseFloat(String(session.cash_earned || 0)) + cashEarned,
       })
       .eq('id', sessionId)
+
+    // Adaptive progress: count the exposure on the first attempt for this clue this
+    // session, and the find on the first verified match. May trigger mastery (3 finds,
+    // no outstanding "tricky" repeats) inside the RPC. Best-effort — never blocks play.
+    await recordEngagement(supabase, {
+      childId: session.child_id,
+      promptId,
+      countShown: attemptCount === 0,
+      found: isFirstMatchForPrompt,
+    })
 
     // Feed the weekly cash record (same row + cap as word-rescue and the bonus).
     if (cashEarned > 0) {

@@ -1,0 +1,192 @@
+/**
+ * Offline prompt-bank expansion pipeline (spec §6). Uses Claude to generate
+ * decodable clues, validates/dedupes them against the existing bank, and emits an
+ * additive seed migration. NOT run during gameplay; review the emitted SQL before
+ * applying with `supabase migration up`.
+ *
+ * Separation of concerns — three stages, each a function you can run/inspect alone:
+ *   1. generate()        — Claude produces candidates per (level, location, category)
+ *   2. validateDedupe()  — drop near-duplicates + enforce per-level length limits
+ *   3. emitMigration()   — write additive INSERTs (existing prompts untouched)
+ *
+ * Requires ANTHROPIC_API_KEY + NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
+ * Run (Node 20+):
+ *   npx tsx --env-file=.env.local scripts/generate-scavenger-prompts.ts
+ */
+import Anthropic from '@anthropic-ai/sdk'
+import { createClient } from '@supabase/supabase-js'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+type Level = 'pre_k' | 'kindergarten' | 'grade_1' | 'grade_2' | 'grade_3'
+type Location = 'indoor' | 'outdoor' | 'either'
+
+interface Candidate {
+  prompt_text: string
+  target_description: string
+  example_objects: string[]
+  location: Location
+  reading_level: Level
+  difficulty: 'easy' | 'medium' | 'hard'
+  category: string
+}
+
+const LEVELS: Level[] = ['pre_k', 'kindergarten', 'grade_1', 'grade_2', 'grade_3']
+const CATEGORIES = ['color', 'shape', 'nature', 'household', 'texture', 'letter', 'animal']
+const TARGET_PER_LEVEL = 100
+// Rough decodability guardrail: max words in the clue per level.
+const MAX_WORDS: Record<Level, number> = {
+  pre_k: 4,
+  kindergarten: 6,
+  grade_1: 8,
+  grade_2: 11,
+  grade_3: 14,
+}
+
+function norm(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+// Stage 1 -------------------------------------------------------------------
+async function generate(
+  client: Anthropic,
+  level: Level,
+  location: Location,
+  category: string,
+  count: number,
+  avoid: string[]
+): Promise<Candidate[]> {
+  const msg = await client.messages.create({
+    model: 'claude-opus-4-8',
+    max_tokens: 4000,
+    messages: [
+      {
+        role: 'user',
+        content:
+          `Generate ${count} scavenger-hunt clues for a child reading game.\n` +
+          `Reading level: ${level}. Location: ${location}. Category: ${category}.\n\n` +
+          `Rules:\n` +
+          `- The READING must be decodable for ${level} (keep words simple even if ` +
+          `the hunt idea is clever). Clue <= ${MAX_WORDS[level]} words.\n` +
+          `- Each clue starts with "Find" and is a single sentence.\n` +
+          `- Target common household/yard objects; include a skip-friendly variety.\n` +
+          `- Do NOT reuse any of these existing clues: ${avoid.slice(0, 200).join(' | ')}\n\n` +
+          `Return ONLY a JSON array of objects with keys: prompt_text, ` +
+          `target_description, example_objects (array of strings), difficulty ` +
+          `(easy|medium|hard).`,
+      },
+    ],
+  })
+  const text = msg.content.find((b) => b.type === 'text')?.text ?? '[]'
+  const json = text.slice(text.indexOf('['), text.lastIndexOf(']') + 1)
+  let parsed: Partial<Candidate>[] = []
+  try {
+    parsed = JSON.parse(json)
+  } catch {
+    console.warn(`  parse failed for ${level}/${location}/${category}`)
+    return []
+  }
+  return parsed
+    .filter((c) => c.prompt_text && c.target_description)
+    .map((c) => ({
+      prompt_text: c.prompt_text!.trim(),
+      target_description: c.target_description!.trim(),
+      example_objects: Array.isArray(c.example_objects) ? c.example_objects : [],
+      location,
+      reading_level: level,
+      difficulty: (c.difficulty as Candidate['difficulty']) || 'easy',
+      category,
+    }))
+}
+
+// Stage 2 -------------------------------------------------------------------
+function validateDedupe(candidates: Candidate[], existing: Set<string>): Candidate[] {
+  const seen = new Set(existing)
+  const out: Candidate[] = []
+  for (const c of candidates) {
+    const key = norm(c.prompt_text)
+    if (!key || seen.has(key)) continue
+    if (c.prompt_text.split(/\s+/).length > MAX_WORDS[c.reading_level]) continue
+    seen.add(key)
+    out.push(c)
+  }
+  return out
+}
+
+// Stage 3 -------------------------------------------------------------------
+function emitMigration(candidates: Candidate[]): string {
+  const esc = (s: string) => s.replace(/'/g, "''")
+  const arr = (xs: string[]) =>
+    `ARRAY[${xs.map((x) => `'${esc(x)}'`).join(',')}]`
+  const values = candidates
+    .map(
+      (c) =>
+        `('${esc(c.prompt_text)}', '${esc(c.target_description)}', ${arr(
+          c.example_objects
+        )}, '${c.location}', '${c.reading_level}', '${c.difficulty}', '${c.category}')`
+    )
+    .join(',\n')
+  const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
+  const header =
+    '-- Generated by scripts/generate-scavenger-prompts.ts (review before applying).\n' +
+    '-- Additive only; existing prompts untouched.\n\n' +
+    'INSERT INTO scavenger_hunt_prompts\n' +
+    '  (prompt_text, target_description, example_objects, location, reading_level, difficulty, category)\nVALUES\n'
+  const file = join(
+    process.cwd(),
+    'supabase',
+    'migrations',
+    `${ts}_add_scavenger_hunt_prompts_v3.sql`
+  )
+  writeFileSync(file, header + values + ';\n')
+  return file
+}
+
+async function main() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const anthropicKey = process.env.ANTHROPIC_API_KEY
+  if (!supabaseUrl || !serviceKey || !anthropicKey) {
+    console.error('Missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / ANTHROPIC_API_KEY')
+    process.exit(1)
+  }
+  const supabase = createClient(supabaseUrl, serviceKey)
+  const client = new Anthropic({ apiKey: anthropicKey })
+
+  const { data: existingRows } = await supabase
+    .from('scavenger_hunt_prompts')
+    .select('prompt_text, reading_level')
+  const existing = new Set((existingRows || []).map((r) => norm(r.prompt_text)))
+  const countByLevel = (lvl: Level) =>
+    (existingRows || []).filter((r) => r.reading_level === lvl).length
+
+  const all: Candidate[] = []
+  for (const level of LEVELS) {
+    const need = Math.max(0, TARGET_PER_LEVEL - countByLevel(level))
+    if (need === 0) {
+      console.log(`${level}: already at target, skipping.`)
+      continue
+    }
+    console.log(`${level}: generating ~${need} new prompts…`)
+    const perCombo = Math.ceil(need / (CATEGORIES.length * 1.5))
+    for (const category of CATEGORIES) {
+      for (const location of ['indoor', 'outdoor', 'either'] as Location[]) {
+        const avoid = [...existing, ...all.map((c) => norm(c.prompt_text))]
+        const raw = await generate(client, level, location, category, perCombo, avoid)
+        const clean = validateDedupe(raw, new Set([...existing, ...all.map((c) => norm(c.prompt_text))]))
+        all.push(...clean)
+      }
+    }
+  }
+
+  console.log(`\n${all.length} new prompts after validate/dedupe.`)
+  if (all.length > 0) {
+    const file = emitMigration(all)
+    console.log(`Wrote ${file}\nReview it, then: supabase migration up`)
+  }
+}
+
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

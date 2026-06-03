@@ -1,12 +1,17 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { useChild } from '../../../ProtectedLayoutClient'
 import { Button, Card } from '@/components/ui'
 import { MyFindsGallery } from '../components/MyFindsGallery'
+import { MasteredList } from '../components/MasteredList'
+
+type Tab = 'finds' | 'mastered'
 
 export default function MyFindsPage() {
   const { selectedChild } = useChild()
+  const [tab, setTab] = useState<Tab>('finds')
 
   if (!selectedChild) {
     return (
@@ -28,9 +33,13 @@ export default function MyFindsPage() {
     <div className="container mx-auto px-4 py-8 max-w-3xl">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Finds 📷</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {tab === 'finds' ? 'My Finds 📷' : 'Words I Mastered ⭐'}
+          </h1>
           <p className="text-gray-600">
-            Everything {selectedChild.name} has found on hunts!
+            {tab === 'finds'
+              ? `Everything ${selectedChild.name} has found on hunts!`
+              : `Clues ${selectedChild.name} mastered and graduated!`}
           </p>
         </div>
         <Link href="/games/scavenger-hunt">
@@ -38,7 +47,37 @@ export default function MyFindsPage() {
         </Link>
       </div>
 
-      <MyFindsGallery childId={selectedChild.id} />
+      {/* Tabs: scrapbook of photos vs. trophy shelf of mastered clues. */}
+      <div className="flex gap-2 mb-6">
+        <button
+          type="button"
+          onClick={() => setTab('finds')}
+          className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+            tab === 'finds'
+              ? 'bg-purple-600 text-white'
+              : 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          My Finds 📷
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('mastered')}
+          className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+            tab === 'mastered'
+              ? 'bg-amber-500 text-white'
+              : 'bg-gray-100 text-gray-600'
+          }`}
+        >
+          Mastered ⭐
+        </button>
+      </div>
+
+      {tab === 'finds' ? (
+        <MyFindsGallery childId={selectedChild.id} />
+      ) : (
+        <MasteredList childId={selectedChild.id} />
+      )}
     </div>
   )
 }

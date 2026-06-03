@@ -8,9 +8,10 @@ import {
 } from '@/lib/types'
 import {
   selectScavengerPrompts,
-  recentlyFoundPromptIds,
+  previousSessionEngagedPromptIds,
   toClientPrompt,
 } from '@/lib/services/scavenger-prompts'
+import { recordEngagement, flagStruggle } from '@/lib/services/scavenger-progress'
 
 interface RouteParams {
   params: Promise<{ sessionId: string }>
@@ -18,9 +19,28 @@ interface RouteParams {
 
 interface PromptActionBody {
   promptId: string
-  action: 'skip' | 'replace'
+  action: 'skip' | 'replace' | 'struggle'
   // Prompt ids already shown in this session, so a replacement is genuinely fresh.
   currentPromptIds?: string[]
+}
+
+const VALID_ACTIONS = ['skip', 'replace', 'struggle']
+
+// Whether this prompt has already been engaged (a photo submitted) in this session,
+// so a follow-up skip doesn't double-count the same clue's exposure.
+async function hasPriorFind(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  sessionId: string,
+  promptId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('scavenger_hunt_finds')
+    .select('id')
+    .eq('session_id', sessionId)
+    .eq('prompt_id', promptId)
+    .limit(1)
+    .maybeSingle()
+  return !!data
 }
 
 // POST: skip a prompt (no photo, no cash) or replace it with a fresh one.
@@ -30,7 +50,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const body: PromptActionBody = await request.json()
     const { promptId, action, currentPromptIds = [] } = body
 
-    if (!promptId || (action !== 'skip' && action !== 'replace')) {
+    if (!promptId || !VALID_ACTIONS.includes(action)) {
       return NextResponse.json(
         { error: 'Missing or invalid fields: promptId, action' },
         { status: 400 }
@@ -73,11 +93,28 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       )
     }
 
+    if (action === 'struggle') {
+      // Kid tapped "This is tricky" — owe forced reappearances (and un-retire if
+      // it had been mastered). Doesn't count as an engagement on its own.
+      await flagStruggle(supabase, { childId: session.child_id, promptId })
+      return NextResponse.json({ ok: true })
+    }
+
     if (action === 'skip') {
       await supabase
         .from('scavenger_hunt_sessions')
         .update({ prompts_skipped: (session.prompts_skipped || 0) + 1 })
         .eq('id', sessionId)
+
+      // Record the engagement: a skip is an exposure (and pays off a struggle
+      // repeat), but only the first engagement with this clue this session counts.
+      const countShown = !(await hasPriorFind(supabase, sessionId, promptId))
+      await recordEngagement(supabase, {
+        childId: session.child_id,
+        promptId,
+        countShown,
+        found: false,
+      })
 
       return NextResponse.json({ ok: true })
     }
@@ -98,18 +135,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const level = mapReadingLevelToScavenger(childData.reading_level)
     const levels = scavengerLevelsAtOrBelow(level)
+    const withImages = level === 'pre_k'
 
-    // Don't draw a prompt already in this session or recently found.
-    const recentlyFound = await recentlyFoundPromptIds(supabase, session.child_id)
+    // Don't draw a prompt already in this session; softly avoid the previous hunt.
     const exclude = Array.from(
-      new Set<string>([...currentPromptIds, promptId, ...recentlyFound])
+      new Set<string>([...currentPromptIds, promptId])
+    )
+    const softExclude = await previousSessionEngagedPromptIds(
+      supabase,
+      session.child_id
     )
 
     const [fresh] = await selectScavengerPrompts(supabase, {
+      childId: session.child_id,
       locationSet: session.location_set as ScavengerLocation,
       levels,
       limit: 1,
       excludePromptIds: exclude,
+      softExcludePromptIds: softExclude,
     })
 
     if (!fresh) {
@@ -124,7 +167,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .update({ prompts_replaced: (session.prompts_replaced || 0) + 1 })
       .eq('id', sessionId)
 
-    return NextResponse.json({ nextPrompt: toClientPrompt(fresh) })
+    return NextResponse.json({ nextPrompt: toClientPrompt(fresh, { withImages }) })
   } catch (error) {
     console.error('Error in scavenger-hunt prompt-action:', error)
     return NextResponse.json(

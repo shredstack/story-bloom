@@ -39,6 +39,8 @@ function PracticeInner() {
     submitPhoto,
     skipPrompt,
     replacePrompt,
+    markTricky,
+    isCurrentPromptTricky,
     advance,
     completeSession,
     reset,
@@ -47,6 +49,7 @@ function PracticeInner() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [result, setResult] = useState<ScavengerVerifyResult | null>(null)
   const [summary, setSummary] = useState<HuntSummaryData | null>(null)
+  const [trickyToast, setTrickyToast] = useState(false)
   const startedRef = useRef(false)
 
   // Lock into a focused, "fullscreen" experience while the hunt is in progress so
@@ -110,6 +113,15 @@ function PracticeInner() {
     setResult(null)
     setPhase('playing')
     await replacePrompt()
+  }
+
+  // "This is tricky" — keep the same clue but ask to practice it more. Gentle warning
+  // haptic + a brief confirmation so the child knows the tap registered.
+  const handleTricky = async () => {
+    warningHaptic()
+    setTrickyToast(true)
+    setTimeout(() => setTrickyToast(false), 2500)
+    await markTricky()
   }
 
   const handlePlayAgain = () => {
@@ -251,6 +263,26 @@ function PracticeInner() {
             )}
           </KidButton>
         </div>
+
+        {/* "This is tricky" — drill this clue. Distinct from skip/replace: it keeps
+            the same clue and asks to see it more. */}
+        <KidButton
+          variant="quiet"
+          size="md"
+          fullWidth
+          onPress={handleTricky}
+          disabled={phase === 'verifying' || isCurrentPromptTricky}
+          aria-label="This one is tricky, practice it more"
+          className="border-amber-300 text-amber-700"
+        >
+          {isCurrentPromptTricky ? 'Added to practice ⭐' : 'This is tricky 🤔'}
+        </KidButton>
+
+        {trickyToast && (
+          <p className="text-center text-sm font-medium text-amber-700">
+            Got it — we&apos;ll practice this one more! 💪
+          </p>
+        )}
       </div>
 
       {phase === 'verifying' && <VerifyingAnimation />}
