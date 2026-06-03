@@ -4,6 +4,10 @@ import { useState, useEffect, useCallback, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChild, useImmersiveMode } from '../../../../../ProtectedLayoutClient'
 import { QuitGameDialog } from '@/components/games/QuitGameDialog'
+import { HoldToQuitButton } from '@/components/games/HoldToQuitButton'
+import { KidButton } from '@/components/games/KidButton'
+import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
+import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { useSentenceShenanigans } from '@/lib/hooks/useSentenceShenanigans'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
 import { usePets } from '@/lib/hooks/usePets'
@@ -39,7 +43,6 @@ export default function PracticeSessionPage({ params }: PageProps) {
   const [isFirstPet, setIsFirstPet] = useState(false)
   const [earnedPetReward, setEarnedPetReward] = useState(false)
   const [rewardPetType, setRewardPetType] = useState<PetType>('cat')
-  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
 
   const {
     sentences,
@@ -83,6 +86,8 @@ export default function PracticeSessionPage({ params }: PageProps) {
 
       const result = await checkSentence(text)
       if (result) {
+        if (result.correct) successHaptic()
+        else warningHaptic()
         setLastResult(result.correct ? 'correct' : 'incorrect')
         setLastWordResults(result.wordResults)
         setLastAccuracy(result.accuracy)
@@ -207,16 +212,19 @@ export default function PracticeSessionPage({ params }: PageProps) {
   }
 
   const handleConfirmQuit = () => {
-    setShowQuitConfirm(false)
+    keepPlaying()
     handleEndSession()
   }
 
   // Lock into a focused experience while actively playing so stray taps on the
   // nav bar can't navigate away mid-session. Chrome returns on loading/error
   // screens and once the session is complete (the reward overlays cover the page).
-  useImmersiveMode(
+  const isPlaying =
     isSupported && !isLoading && !error && !!selectedChild && !isSessionComplete
-  )
+  useImmersiveMode(isPlaying)
+
+  // Quit confirm state + native back-button "request-quit" listener (only while playing).
+  const { showConfirm, requestQuit, keepPlaying } = useQuitGuard(isPlaying)
 
   if (!selectedChild) {
     router.push('/games/sentence-shenanigans')
@@ -279,20 +287,12 @@ export default function PracticeSessionPage({ params }: PageProps) {
     <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
       {/* Header with back button */}
       <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={() => setShowQuitConfirm(true)}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          <span className="text-sm font-medium">Quit</span>
-        </button>
+        <HoldToQuitButton onHoldComplete={requestQuit} />
         <div className="text-sm text-gray-500 text-center">
           <div className="font-medium">{currentMaterial?.name || 'Practice'}</div>
           <div className="text-xs">{selectedChild.name}</div>
         </div>
-        <div className="w-12" />
+        <div className="w-16" />
       </div>
 
       {/* Progress Bar */}
@@ -349,28 +349,18 @@ export default function PracticeSessionPage({ params }: PageProps) {
       <div className="flex flex-col items-center gap-6">
         {/* Show "Got it" button when showing feedback for non-perfect attempts */}
         {lastResult !== null && lastAccuracy < 100 ? (
-          <Button
-            size="lg"
-            onClick={handleGotIt}
-            className="px-8 py-4 text-lg"
-          >
+          <KidButton size="xl" variant="primary" onPress={handleGotIt} aria-label="Got it, continue">
             Got it!
-          </Button>
+          </KidButton>
         ) : status === 'listening' ? (
           // "Done Reading" button while listening in continuous mode
           <div className="flex flex-col items-center gap-4">
-            <Button
-              size="lg"
-              onClick={finishListening}
-              className="px-8 py-4 text-lg bg-green-500 hover:bg-green-600"
-            >
-              <span className="flex items-center gap-2">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                Done Reading!
-              </span>
-            </Button>
+            <KidButton size="xl" variant="success" onPress={finishListening} aria-label="Done reading">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Done Reading!
+            </KidButton>
 
             {/* Visual indicator that we're still listening */}
             <div className="flex items-center gap-2 text-blue-500">
@@ -397,17 +387,20 @@ export default function PracticeSessionPage({ params }: PageProps) {
                 : 'Tap the microphone and read the sentence aloud'}
         </p>
 
-        <div className="flex gap-4">
-          <Button
-            variant="ghost"
-            onClick={handleSkip}
+        {/* Big, obvious escape hatch (§B5). */}
+        <div className="flex items-center gap-4">
+          <KidButton
+            variant="secondary"
+            size="lg"
+            onPress={handleSkip}
             disabled={lastResult !== null || isAdvancing || status === 'listening'}
+            aria-label="Skip this sentence"
           >
-            Skip Sentence
-          </Button>
-          <Button variant="outline" onClick={() => setShowQuitConfirm(true)}>
+            Skip Sentence →
+          </KidButton>
+          <KidButton variant="quiet" size="md" onPress={requestQuit} haptic={false}>
             End Session
-          </Button>
+          </KidButton>
         </div>
       </div>
 
@@ -464,8 +457,8 @@ export default function PracticeSessionPage({ params }: PageProps) {
 
       {/* Quit confirmation — prevents an accidental tap from ending the session. */}
       <QuitGameDialog
-        open={showQuitConfirm}
-        onKeepPlaying={() => setShowQuitConfirm(false)}
+        open={showConfirm}
+        onKeepPlaying={keepPlaying}
         onQuit={handleConfirmQuit}
         title="Quit this practice?"
       />

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useChild } from '../../ProtectedLayoutClient'
 import { useStrugglingWords } from '@/lib/hooks/useStrugglingWords'
 import { Button, Card } from '@/components/ui'
+import { KidButton } from '@/components/games/KidButton'
 import { MASTERY_STAGE_INFO } from '@/lib/types'
 
 export default function WordRescuePage() {
@@ -85,9 +86,15 @@ export default function WordRescuePage() {
           <p className="text-purple-700 mb-4">
             Practice with your pet buddy to help your words grow
           </p>
-          <Link href="/games/word-rescue/practice">
-            <Button className="px-8 py-3 text-lg">Start Practicing!</Button>
-          </Link>
+          <div className="flex justify-center">
+            <KidButton
+              size="xl"
+              onPress={() => router.push('/games/word-rescue/practice')}
+              aria-label="Start practicing"
+            >
+              Start Practicing!
+            </KidButton>
+          </div>
         </Card>
       ) : (
         <Card className="p-6 mb-6 text-center">

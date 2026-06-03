@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { SpeechRecognitionStatus } from '@/lib/types'
+import { useAudioRecorder } from '@/lib/hooks/useAudioRecorder'
 
 // Web Speech API type definitions
 interface SpeechRecognitionResult {
@@ -76,7 +77,13 @@ interface UseSpeechRecognitionReturn {
   error: string | null
 }
 
-export function useSpeechRecognition(
+/**
+ * Web Speech API implementation (Chrome/Edge desktop, Android WebView). This is
+ * the original behavior, unchanged — including iOS-Safari abort retries and the
+ * continuous/interim modes. `isSupported` reflects whether `webkitSpeechRecognition`
+ * actually exists, which is FALSE in iOS WKWebView (the native shell).
+ */
+function useWebSpeechRecognition(
   options: UseSpeechRecognitionOptions = {}
 ): UseSpeechRecognitionReturn {
   const [isSupported, setIsSupported] = useState(false)
@@ -327,6 +334,137 @@ export function useSpeechRecognition(
     resetTranscript,
     error,
   }
+}
+
+/**
+ * Fallback implementation for platforms WITHOUT the Web Speech API — primarily
+ * iOS WKWebView (the native StoryBloom shell), and any browser missing
+ * `webkitSpeechRecognition`. It records audio with `useAudioRecorder` and POSTs it
+ * to `/api/speech/transcribe` (OpenAI Whisper), then surfaces the transcript
+ * through the exact same `UseSpeechRecognitionReturn` contract.
+ *
+ * Behavioral mapping vs. Web Speech:
+ *   - There's no on-device "end of speech" event, so the kid's "I'm done" signal
+ *     (tapping the mic to stop, or "Done Reading") finalizes and transcribes. A
+ *     max-duration safety auto-stops and transcribes too, so the mic never hangs.
+ *   - `interimTranscript` is always empty (no streaming); `finalTranscript`
+ *     mirrors the resolved `transcript`.
+ */
+function useRecorderSpeechRecognition(
+  options: UseSpeechRecognitionOptions = {}
+): UseSpeechRecognitionReturn {
+  const [status, setStatus] = useState<SpeechRecognitionStatus>('idle')
+  const [transcript, setTranscript] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const optionsRef = useRef(options)
+  optionsRef.current = options
+  const continuous = options.continuous ?? false
+
+  const transcribe = useCallback(async (blob: Blob) => {
+    setStatus('processing')
+    try {
+      const form = new FormData()
+      // Filename extension hints the container to Whisper; webm/mp4 both accepted.
+      const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+      form.append('audio', blob, `speech.${ext}`)
+
+      const res = await fetch('/api/speech/transcribe', {
+        method: 'POST',
+        body: form,
+      })
+      if (!res.ok) throw new Error(`transcribe failed: ${res.status}`)
+
+      const data = (await res.json()) as { transcript?: string }
+      const text = (data.transcript ?? '').trim().toLowerCase()
+
+      if (text) {
+        setTranscript(text)
+        // Mirror the web impl: 'processing' while the caller's onResult runs.
+        setStatus('processing')
+        optionsRef.current.onResult?.(text)
+      } else {
+        setError("I didn't hear anything. Try tapping the microphone and reading again!")
+        setStatus('idle')
+      }
+    } catch {
+      const msg = 'Something went wrong. Please try again.'
+      setError(msg)
+      setStatus('error')
+      optionsRef.current.onError?.(msg)
+    }
+  }, [])
+
+  const {
+    isSupported,
+    startRecording,
+    stopRecording,
+    resetRecording,
+  } = useAudioRecorder({
+    // Lenient windows so an uncoordinated kid never gets cut off mid-word.
+    maxDurationMs: continuous ? 30000 : 8000,
+    onRecordingComplete: (blob) => {
+      void transcribe(blob)
+    },
+    onError: (msg) => {
+      setError(msg)
+      setStatus('error')
+      optionsRef.current.onError?.(msg)
+    },
+  })
+
+  const startListening = useCallback(() => {
+    setError(null)
+    setTranscript('')
+    setStatus('listening')
+    void startRecording()
+  }, [startRecording])
+
+  // Both stop and finish finalize the recording → transcription. (On a tablet
+  // there's no silence-detection, so the kid's tap IS the "done" signal.)
+  const stopListening = useCallback(() => {
+    stopRecording()
+  }, [stopRecording])
+
+  const finishListening = useCallback(() => {
+    stopRecording()
+  }, [stopRecording])
+
+  const resetTranscript = useCallback(() => {
+    setTranscript('')
+    setError(null)
+    setStatus('idle')
+    resetRecording()
+  }, [resetRecording])
+
+  return {
+    isSupported,
+    status,
+    transcript,
+    interimTranscript: '',
+    finalTranscript: transcript,
+    startListening,
+    stopListening,
+    finishListening,
+    resetTranscript,
+    error,
+  }
+}
+
+/**
+ * Public speech-recognition hook. Unchanged contract — every game's call site
+ * keeps working. Picks the implementation by capability: native `webkitSpeechRecognition`
+ * where it exists (Android WebView, desktop Chrome/Edge), and the Whisper-backed
+ * audio-recorder fallback everywhere it doesn't (notably iOS WKWebView).
+ *
+ * Both internal hooks are invoked unconditionally (Rules of Hooks); only the
+ * selected one is ever *started*, so the other stays inert.
+ */
+export function useSpeechRecognition(
+  options: UseSpeechRecognitionOptions = {}
+): UseSpeechRecognitionReturn {
+  const web = useWebSpeechRecognition(options)
+  const recorder = useRecorderSpeechRecognition(options)
+  return web.isSupported ? web : recorder
 }
 
 function getErrorMessage(error: string): string {

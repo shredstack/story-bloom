@@ -15,6 +15,31 @@
 }
 
 /* ============================================
+   Kid mode — small-hands defaults, NATIVE APP ONLY (§B4/B9)
+   Gated on <html data-native> (set by NativeShellProvider) so the plain browser
+   experience is untouched. Suppresses the gesture mishaps that make games look
+   broken to a 5–8 year old: double-tap zoom, long-press callouts, pull-to-refresh
+   rubber-banding, and accidental text selection.
+   ============================================ */
+html[data-native],
+html[data-native] body {
+  touch-action: manipulation;       /* kills double-tap-to-zoom delay */
+  overscroll-behavior: contain;     /* no pull-to-refresh / rubber-banding */
+  -webkit-touch-callout: none;      /* no long-press menus */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Real text fields stay selectable/typable (login, parent PIN, sentence edits). */
+html[data-native] input,
+html[data-native] textarea,
+html[data-native] [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ============================================
    Pet Habitat Idle Animations (Phase 2)
    ============================================ */
 

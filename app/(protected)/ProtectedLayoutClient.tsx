@@ -6,6 +6,7 @@ import type { Child } from '@/lib/types'
 import { Header } from '@/components/layout/Header'
 import { createClient } from '@/lib/supabase/client'
 import { exitFullscreen } from '@/lib/fullscreen'
+import { NativeShellProvider } from '@/components/native/NativeShellProvider'
 
 const SELECTED_CHILD_KEY = 'storybloom-selected-child'
 
@@ -220,6 +221,9 @@ export default function ProtectedLayoutClient({ user, initialChildren, children:
     <AuthContext.Provider value={{ user }}>
       <ChildContext.Provider value={childContextValue}>
         <ImmersiveContext.Provider value={{ immersive, setImmersive }}>
+          {/* Native-only lock-down (no-op on web): hides splash/status bar,
+              guards the Android back button, locks orientation during games. */}
+          <NativeShellProvider immersive={immersive} />
           <div className="min-h-screen flex flex-col">
             {!immersive && (
               <Header

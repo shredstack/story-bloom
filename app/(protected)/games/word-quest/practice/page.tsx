@@ -4,6 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChild, useImmersiveMode } from '../../../ProtectedLayoutClient'
 import { QuitGameDialog } from '@/components/games/QuitGameDialog'
+import { HoldToQuitButton } from '@/components/games/HoldToQuitButton'
+import { KidButton } from '@/components/games/KidButton'
+import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
+import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { useWordQuest } from '@/lib/hooks/useWordQuest'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
 import { usePets } from '@/lib/hooks/usePets'
@@ -33,7 +37,6 @@ export default function PracticePage() {
   const [isFirstPet, setIsFirstPet] = useState(false)
   const [earnedPetReward, setEarnedPetReward] = useState(false)
   const [rewardPetType, setRewardPetType] = useState<PetType>('cat')
-  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
 
   const {
     words,
@@ -74,6 +77,8 @@ export default function PracticePage() {
       if (!currentWord || isAdvancing) return
 
       const isCorrect = await checkAnswer(text)
+      if (isCorrect) successHaptic()
+      else warningHaptic()
       setLastResult(isCorrect ? 'correct' : 'incorrect')
       setIsAdvancing(true)
 
@@ -176,16 +181,19 @@ export default function PracticePage() {
   }
 
   const handleConfirmQuit = () => {
-    setShowQuitConfirm(false)
+    keepPlaying()
     handleEndSession()
   }
 
   // Lock into a focused experience while actively playing so stray taps on the
   // nav bar can't navigate away mid-session. Chrome returns on loading/error
   // screens and once the session is complete (the reward overlays cover the page).
-  useImmersiveMode(
+  const isPlaying =
     isSupported && !isLoading && !error && !!selectedChild && !isSessionComplete
-  )
+  useImmersiveMode(isPlaying)
+
+  // Quit confirm state + native back-button "request-quit" listener (only while playing).
+  const { showConfirm, requestQuit, keepPlaying } = useQuitGuard(isPlaying)
 
   if (!selectedChild) {
     router.push('/games/word-quest')
@@ -241,27 +249,10 @@ export default function PracticePage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 md:py-8">
-      {/* Header with back button */}
+      {/* Header: hold-to-quit lives in the corner, quiet and hard to trigger by
+          accident (§B2). */}
       <div className="flex items-center justify-between mb-6">
-        <button
-          onClick={() => setShowQuitConfirm(true)}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-          <span className="text-sm font-medium">Quit</span>
-        </button>
+        <HoldToQuitButton onHoldComplete={requestQuit} />
         <div className="text-sm text-gray-500">{selectedChild.name}</div>
       </div>
 
@@ -316,17 +307,21 @@ export default function PracticePage() {
                 : 'Tap the microphone and read the word'}
         </p>
 
-        <div className="flex gap-4">
-          <Button
-            variant="ghost"
-            onClick={handleSkip}
+        {/* Big, obvious escape hatch so a kid reaches for "Skip" instead of
+            fishing for the OS back gesture (§B5). */}
+        <div className="flex items-center gap-4">
+          <KidButton
+            variant="secondary"
+            size="lg"
+            onPress={handleSkip}
             disabled={lastResult !== null || isAdvancing}
+            aria-label="Skip this word"
           >
-            Skip Word
-          </Button>
-          <Button variant="outline" onClick={() => setShowQuitConfirm(true)}>
+            Skip Word →
+          </KidButton>
+          <KidButton variant="quiet" size="md" onPress={requestQuit} haptic={false}>
             End Session
-          </Button>
+          </KidButton>
         </div>
       </div>
 
@@ -385,8 +380,8 @@ export default function PracticePage() {
 
       {/* Quit confirmation — prevents an accidental tap from ending the session. */}
       <QuitGameDialog
-        open={showQuitConfirm}
-        onKeepPlaying={() => setShowQuitConfirm(false)}
+        open={showConfirm}
+        onKeepPlaying={keepPlaying}
         onQuit={handleConfirmQuit}
         title="Quit Word Quest?"
       />

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChild } from '../../ProtectedLayoutClient'
 import { Button, Card } from '@/components/ui'
+import { KidButton } from '@/components/games/KidButton'
 import { PetCard } from '@/components/word-quest'
 import { usePets } from '@/lib/hooks/usePets'
 import { createClient } from '@/lib/supabase/client'
@@ -115,21 +116,16 @@ export default function WordQuestPage() {
             </span>
           </p>
           <p className="text-gray-500 text-sm mb-6">10 words per session</p>
-          <Button
-            size="lg"
-            onClick={() => {
-              enterFullscreen()
-              router.push('/games/word-quest/practice')
-            }}
-            className="bg-gradient-to-r from-primary-500 to-secondary-500 px-8"
-          >
-            <span className="flex items-center gap-2">
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+          <div className="flex justify-center">
+            <KidButton
+              size="xl"
+              onPress={() => {
+                enterFullscreen()
+                router.push('/games/word-quest/practice')
+              }}
+              aria-label="Start practice"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -144,8 +140,8 @@ export default function WordQuestPage() {
                 />
               </svg>
               Start Practice
-            </span>
-          </Button>
+            </KidButton>
+          </div>
         </div>
       </Card>
 

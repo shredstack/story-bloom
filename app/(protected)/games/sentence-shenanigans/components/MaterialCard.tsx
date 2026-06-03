@@ -2,6 +2,7 @@
 
 import type { ReadingMaterial } from '@/lib/types'
 import { Card, Button } from '@/components/ui'
+import { KidButton } from '@/components/games/KidButton'
 
 interface MaterialCardProps {
   material: ReadingMaterial & {
@@ -70,13 +71,9 @@ export function MaterialCard({ material, onPractice, onEdit }: MaterialCardProps
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </Button>
-          <Button
-            size="sm"
-            onClick={onPractice}
-            className="bg-gradient-to-r from-secondary-500 to-primary-500"
-          >
+          <KidButton size="md" variant="secondary" onPress={onPractice} aria-label="Practice this material">
             Practice
-          </Button>
+          </KidButton>
         </div>
       </div>
     </Card>

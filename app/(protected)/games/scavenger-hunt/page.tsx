@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useChild } from '../../ProtectedLayoutClient'
 import { Button, Card } from '@/components/ui'
+import { KidButton } from '@/components/games/KidButton'
 import { CashTracker } from '../word-rescue/components/CashTracker'
 import { enterFullscreen } from '@/lib/fullscreen'
 import type { ScavengerLocation } from '@/lib/types'
@@ -85,9 +86,9 @@ export default function ScavengerHuntPage() {
         </div>
       </Card>
 
-      <Button className="w-full py-4 text-xl mb-4" onClick={startHunt}>
+      <KidButton size="xl" fullWidth className="mb-4" onPress={startHunt} aria-label="Start the hunt">
         Start the Hunt! 🚀
-      </Button>
+      </KidButton>
 
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
         <Link href="/games/scavenger-hunt/finds">
