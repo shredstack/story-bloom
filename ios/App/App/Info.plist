@@ -47,5 +47,15 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UIStatusBarHidden</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>StoryBloom uses the camera so you can photograph things you find on a scavenger hunt.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>StoryBloom listens while you read words out loud so it can cheer you on.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>StoryBloom can save the photos from your scavenger hunt finds.</string>
 </dict>
 </plist>
