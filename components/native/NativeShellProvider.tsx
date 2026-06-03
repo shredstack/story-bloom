@@ -38,11 +38,20 @@ export function NativeShellProvider({ immersive }: NativeShellProviderProps) {
   useEffect(() => {
     if (!isNative) return
     document.documentElement.setAttribute('data-native', 'true')
+    // Disable pinch-zoom inside the native app only — kids pinch by accident and
+    // then everything looks broken (§B4). The browser stays zoomable.
+    const viewportMeta = document.querySelector('meta[name="viewport"]')
+    const originalViewport = viewportMeta?.getAttribute('content') ?? null
+    viewportMeta?.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'
+    )
     void hideNativeChrome()
     const uninstall = installBackButtonGuard(() => immersiveRef.current)
     return () => {
       uninstall()
       document.documentElement.removeAttribute('data-native')
+      if (originalViewport) viewportMeta?.setAttribute('content', originalViewport)
     }
   }, [isNative])
 
