@@ -4,6 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useChild, useImmersiveMode } from '../../../ProtectedLayoutClient'
 import { QuitGameDialog } from '@/components/games/QuitGameDialog'
+import { HoldToQuitButton } from '@/components/games/HoldToQuitButton'
+import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
+import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { enterFullscreen } from '@/lib/fullscreen'
 import { useWordRescue } from '@/lib/hooks/useWordRescue'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
@@ -31,11 +34,13 @@ export default function WordRescuePracticePage() {
   const [lastAttemptCorrect, setLastAttemptCorrect] = useState<boolean | null>(null)
   const [needsReset, setNeedsReset] = useState(false)
   const [checkError, setCheckError] = useState(false)
-  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
 
   // Lock into a focused experience while playing so stray taps on the nav bar
   // can't navigate away and lose progress. Chrome returns on the summary screen.
   useImmersiveMode(phase === 'playing')
+
+  // Quit confirm state + native back-button "request-quit" listener (only while playing).
+  const { showConfirm, requestQuit, keepPlaying } = useQuitGuard(phase === 'playing')
 
   const {
     words,
@@ -71,6 +76,7 @@ export default function WordRescuePracticePage() {
         setLastAttemptCorrect(result.correct)
 
         if (result.correct) {
+          successHaptic()
           // Set result type for buddy encouragement
           if (result.isMastered) {
             setLastResult('mastered')
@@ -90,6 +96,7 @@ export default function WordRescuePracticePage() {
           })
           setShowCelebration(true)
         } else {
+          warningHaptic()
           setLastResult('incorrect')
           // Signal that we need to reset speech recognition so they can try again
           setNeedsReset(true)
@@ -195,7 +202,7 @@ export default function WordRescuePracticePage() {
   // End the session deliberately (gated by confirmation): finalize so progress is
   // saved, then show the summary.
   const handleConfirmQuit = () => {
-    setShowQuitConfirm(false)
+    keepPlaying()
     endSession()
     setPhase('complete')
   }
@@ -292,13 +299,7 @@ export default function WordRescuePracticePage() {
           <span className="text-sm text-gray-500">Rescued</span>
           <div className="font-semibold text-green-600">{stats.wordsRescued}</div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowQuitConfirm(true)}
-        >
-          Quit
-        </Button>
+        <HoldToQuitButton onHoldComplete={requestQuit} />
       </div>
 
       {/* Progress bar */}
@@ -370,8 +371,8 @@ export default function WordRescuePracticePage() {
 
       {/* Quit confirmation — prevents an accidental tap from ending the session. */}
       <QuitGameDialog
-        open={showQuitConfirm}
-        onKeepPlaying={() => setShowQuitConfirm(false)}
+        open={showConfirm}
+        onKeepPlaying={keepPlaying}
         onQuit={handleConfirmQuit}
       />
     </div>

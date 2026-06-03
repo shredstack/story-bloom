@@ -4,6 +4,10 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useChild, useImmersiveMode } from '../../../ProtectedLayoutClient'
 import { QuitGameDialog } from '@/components/games/QuitGameDialog'
+import { HoldToQuitButton } from '@/components/games/HoldToQuitButton'
+import { KidButton } from '@/components/games/KidButton'
+import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
+import { successHaptic, warningHaptic, mediumHaptic } from '@/lib/native/haptics'
 import { useScavengerHunt } from '@/lib/hooks/useScavengerHunt'
 import { Button, Card } from '@/components/ui'
 import { SCAVENGER_HUNT_DEFAULTS, type ScavengerLocation, type ScavengerVerifyResult } from '@/lib/types'
@@ -43,13 +47,15 @@ function PracticeInner() {
   const [phase, setPhase] = useState<Phase>('loading')
   const [result, setResult] = useState<ScavengerVerifyResult | null>(null)
   const [summary, setSummary] = useState<HuntSummaryData | null>(null)
-  const [showQuitConfirm, setShowQuitConfirm] = useState(false)
   const startedRef = useRef(false)
 
   // Lock into a focused, "fullscreen" experience while the hunt is in progress so
   // stray taps on the nav bar can't navigate away and lose game progress. The chrome
   // returns once the hunt is finished (summary) or the page unmounts.
   useImmersiveMode(phase !== 'complete')
+
+  // Quit confirm state + native back-button "request-quit" listener (only while hunting).
+  const { showConfirm, requestQuit, keepPlaying } = useQuitGuard(phase !== 'complete')
 
   // Start the hunt once on mount.
   useEffect(() => {
@@ -69,6 +75,7 @@ function PracticeInner() {
   }, [isSessionComplete, phase, completeSession])
 
   const handleCapture = async (file: File) => {
+    mediumHaptic()
     setPhase('verifying')
     const r = await submitPhoto(file)
     if (!r) {
@@ -76,6 +83,8 @@ function PracticeInner() {
       setPhase('playing')
       return
     }
+    if (r.isMatch) successHaptic()
+    else warningHaptic()
     setResult(r)
     setPhase('result')
   }
@@ -116,7 +125,7 @@ function PracticeInner() {
   // saved, then show the summary. Gated behind a confirmation so an accidental tap
   // can't quit mid-game.
   const handleConfirmQuit = () => {
-    setShowQuitConfirm(false)
+    keepPlaying()
     setPhase('complete')
     completeSession().then(setSummary)
   }
@@ -190,13 +199,7 @@ function PracticeInner() {
             </div>
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowQuitConfirm(true)}
-        >
-          Quit
-        </Button>
+        <HoldToQuitButton onHoldComplete={requestQuit} />
       </div>
 
       {/* Progress bar */}
@@ -222,26 +225,31 @@ function PracticeInner() {
       {/* Camera + escape hatches */}
       <div className="space-y-3">
         <CameraCapture onCapture={handleCapture} disabled={phase === 'verifying'} />
+        {/* Big, obvious escape hatches so a kid is never stuck (§B5). */}
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={handleSkip}
+          <KidButton
+            variant="secondary"
+            size="md"
+            fullWidth
+            onPress={handleSkip}
             disabled={phase === 'verifying'}
+            aria-label="Can't find it, skip"
           >
             Can&apos;t find it
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={handleNewOne}
+          </KidButton>
+          <KidButton
+            variant="secondary"
+            size="md"
+            fullWidth
+            onPress={handleNewOne}
             disabled={phase === 'verifying' || replacementsLeft <= 0}
+            aria-label="Give me a new clue"
           >
             Give me a new one
             {replacementsLeft > 0 && replacementsLeft <= 3 && (
-              <span className="ml-1 text-xs text-gray-400">({replacementsLeft})</span>
+              <span className="ml-1 text-xs opacity-80">({replacementsLeft})</span>
             )}
-          </Button>
+          </KidButton>
         </div>
       </div>
 
@@ -260,8 +268,8 @@ function PracticeInner() {
 
       {/* Quit confirmation — prevents an accidental tap from ending the hunt. */}
       <QuitGameDialog
-        open={showQuitConfirm}
-        onKeepPlaying={() => setShowQuitConfirm(false)}
+        open={showConfirm}
+        onKeepPlaying={keepPlaying}
         onQuit={handleConfirmQuit}
         title="Quit the hunt?"
         message="You can keep playing, or quit now and keep the cash you've already found."
