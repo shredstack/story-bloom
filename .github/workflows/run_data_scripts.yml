@@ -1,0 +1,138 @@
+name: Run Data Scripts
+
+# Runs one-time / idempotent data scripts against PRODUCTION after they change on a
+# merge to main. Database *migrations* are handled separately by
+# deploy_database_migrations.yml — this workflow is for the TypeScript scripts under
+# scripts/ that populate data (e.g. generating + storing Pre-K prompt images).
+#
+# SAFETY: only scripts on the curated ALLOWLIST below can ever run, and each runs
+# only when it (or a path it watches) actually changed in the merge. The job uses
+# the `production` GitHub Environment, so it waits for manual approval before it
+# touches prod (same gate as the migration deploy). Allow-listed scripts MUST be
+# safe to re-run (idempotent).
+#
+# To add a script: append an entry to ALLOWLIST as "<script>|<space-separated paths
+# that should trigger it>". Never add a script that has irreversible side effects or
+# that only emits a file for human review (e.g. scripts/generate-scavenger-prompts.ts,
+# which produces a migration to be reviewed — deliberately NOT listed).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'lib/services/scavenger-prompt-image-generator.ts'
+  workflow_dispatch:
+    inputs:
+      run_all:
+        description: 'Run every allow-listed script (ignore change detection)'
+        type: boolean
+        default: false
+
+# Don't let two prod data-script runs overlap.
+concurrency:
+  group: run-data-scripts-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  run-scripts:
+    runs-on: ubuntu-latest
+    environment: production # requires manual approval before touching prod
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history to diff the merged range
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run allow-listed data scripts that changed
+        env:
+          # Production Supabase, derived from the existing project-ref secret.
+          NEXT_PUBLIC_SUPABASE_URL: https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RUN_ALL: ${{ github.event.inputs.run_all }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # ---- Curated allow-list (edit this to add scripts) -----------------
+          # "<script path>|<space-separated trigger paths>"
+          ALLOWLIST=(
+            "scripts/generate-scavenger-prompt-images.ts|scripts/generate-scavenger-prompt-images.ts lib/services/scavenger-prompt-image-generator.ts"
+          )
+          # --------------------------------------------------------------------
+
+          # Files changed by this merge (fallback to the tip commit if the range
+          # isn't available, e.g. on workflow_dispatch or a brand-new branch).
+          if [ -n "${BEFORE_SHA:-}" ] && [ "${BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]; then
+            RANGE="${BEFORE_SHA}..${AFTER_SHA}"
+          else
+            RANGE="${AFTER_SHA}^..${AFTER_SHA}"
+          fi
+          echo "Diff range: ${RANGE}"
+          CHANGED="$(git diff --name-only "${RANGE}" || true)"
+          echo "Changed files:"
+          echo "${CHANGED:-<none>}"
+
+          # Decide which allow-listed scripts to run.
+          TO_RUN=()
+          for entry in "${ALLOWLIST[@]}"; do
+            script="${entry%%|*}"
+            triggers="${entry#*|}"
+            if [ "${RUN_ALL:-false}" = "true" ]; then
+              TO_RUN+=("$script"); continue
+            fi
+            for t in $triggers; do
+              if echo "${CHANGED}" | grep -qxF "$t"; then
+                TO_RUN+=("$script"); break
+              fi
+            done
+          done
+
+          if [ "${#TO_RUN[@]}" -eq 0 ]; then
+            echo "No allow-listed scripts changed in this merge — nothing to run."
+            exit 0
+          fi
+
+          # Required secrets for the scripts we're about to run.
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not set."; exit 1
+          fi
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::OPENAI_API_KEY secret is not set (needed by the image generator)."; exit 1
+          fi
+
+          for script in "${TO_RUN[@]}"; do
+            echo "::group::Running ${script}"
+            npx --yes tsx "${script}"
+            echo "::endgroup::"
+          done
+
+      - name: Notify on failure (GitHub Issue)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Data Script Run Failed',
+              body: `A production data-script run failed for commit ${context.sha}.\n\nCheck the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`,
+              labels: ['bug', 'database']
+            })
