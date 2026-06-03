@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Card } from '@/components/ui'
 import { useFontSize } from '@/lib/hooks/useFontSize'
 import { FONT_SIZE_CLASSES, type ScavengerHuntPrompt } from '@/lib/types'
@@ -15,10 +16,20 @@ const LOCATION_BADGE: Record<string, { emoji: string; label: string }> = {
 }
 
 // The reading moment: large, high-contrast, dyslexia-friendly. No read-aloud —
-// decoding the prompt IS the reading practice.
+// decoding the prompt IS the reading practice. For Pre-K (non-readers), a picture
+// hint leads above the text so they know what the word says; the text stays below
+// (print exposure still matters). imageUrl is null for everyone else.
 export function PromptCard({ prompt }: PromptCardProps) {
   const { fontSize } = useFontSize()
   const badge = LOCATION_BADGE[prompt.location] || LOCATION_BADGE.either
+
+  // A broken/missing image must never block play — fall back to text-only.
+  const [imageOk, setImageOk] = useState(true)
+  useEffect(() => {
+    setImageOk(true) // reset when the clue changes
+  }, [prompt.imageUrl])
+
+  const showImage = !!prompt.imageUrl && imageOk
 
   return (
     <Card className="p-8 text-center bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200">
@@ -26,6 +37,19 @@ export function PromptCard({ prompt }: PromptCardProps) {
         <span>{badge.emoji}</span>
         <span>{badge.label}</span>
       </div>
+
+      {showImage && (
+        <div className="mb-6 flex justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={prompt.imageUrl as string}
+            alt=""
+            aria-hidden
+            onError={() => setImageOk(false)}
+            className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-3xl bg-white shadow-md border-2 border-amber-200"
+          />
+        </div>
+      )}
 
       <p
         className={`font-extrabold text-gray-900 tracking-wide leading-snug ${FONT_SIZE_CLASSES[fontSize]}`}

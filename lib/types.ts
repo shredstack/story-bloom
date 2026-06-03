@@ -1562,6 +1562,26 @@ export interface ScavengerHuntPrompt {
   promptText: string;
   location: ScavengerLocation;
   category: string | null;
+  // Pre-K picture hint. Only populated when the *child's* reading level is pre_k;
+  // null for everyone else (the image stays server-side). See scavenger-prompts.ts.
+  imageUrl: string | null;
+}
+
+// Per-child, per-prompt progress for adaptive repetition & mastery.
+// Mirrors the scavenger_prompt_progress table.
+export interface ScavengerPromptProgress {
+  id: string;
+  child_id: string;
+  prompt_id: string;
+  times_shown: number;
+  times_found: number;
+  struggle_flagged: boolean;
+  struggle_repeats_remaining: number;
+  status: 'learning' | 'mastered';
+  last_shown_at: string | null;
+  mastered_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ScavengerHuntSession {
@@ -1625,6 +1645,8 @@ export const SCAVENGER_HUNT_DEFAULTS = {
   confidenceFloor: 0.45,
   maxReplacementsPerSession: 5,
   maxAttemptsPerPrompt: 5,
+  masteryThreshold: 3,      // successful finds (with no "tricky" flag) -> mastered & retired
+  struggleRepeats: 5,       // forced reappearances owed when a clue is flagged "tricky"
 } as const;
 
 // Running totals tracked client-side during a hunt.

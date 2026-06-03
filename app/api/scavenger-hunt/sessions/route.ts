@@ -7,7 +7,7 @@ import {
 } from '@/lib/types'
 import {
   selectScavengerPrompts,
-  recentlyFoundPromptIds,
+  previousSessionEngagedPromptIds,
   toClientPrompt,
 } from '@/lib/services/scavenger-prompts'
 
@@ -75,15 +75,22 @@ export async function POST(request: NextRequest) {
     // Reading level comes from the child's profile (not a per-game setting).
     const level = mapReadingLevelToScavenger(child.reading_level)
     const levels = scavengerLevelsAtOrBelow(level)
+    // Pre-K children (lowest reading level) get a picture hint with each clue.
+    const withImages = level === 'pre_k'
 
-    // Anti-repeat: avoid prompts the child found recently.
-    const excludePromptIds = await recentlyFoundPromptIds(supabase, childId)
+    // Soft anti-repeat: avoid prompts engaged in the immediately previous hunt.
+    // (Per-child progress now drives the rest of the adaptive selection.)
+    const softExcludePromptIds = await previousSessionEngagedPromptIds(
+      supabase,
+      childId
+    )
 
     const prompts = await selectScavengerPrompts(supabase, {
+      childId,
       locationSet,
       levels,
       limit: promptsPerSession,
-      excludePromptIds,
+      softExcludePromptIds,
     })
 
     if (prompts.length === 0) {
@@ -114,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       session,
-      prompts: prompts.map(toClientPrompt),
+      prompts: prompts.map((p) => toClientPrompt(p, { withImages })),
     })
   } catch (error) {
     console.error('Error in scavenger-hunt sessions POST:', error)

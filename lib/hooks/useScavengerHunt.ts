@@ -35,6 +35,8 @@ interface UseScavengerHuntReturn {
   submitPhoto: (file: File) => Promise<ScavengerVerifyResult | null>
   skipPrompt: () => Promise<void>
   replacePrompt: () => Promise<boolean>
+  markTricky: () => Promise<void>
+  isCurrentPromptTricky: boolean
   advance: () => void
   completeSession: () => Promise<HuntSummary | null>
   reset: () => void
@@ -57,12 +59,16 @@ export function useScavengerHunt({
   const [stats, setStats] = useState<ScavengerHuntStats>(emptyStats)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Prompts the child has flagged "tricky" this session (optimistic; relabels the
+  // control and avoids redundant re-flags). Reset on a new hunt.
+  const [trickyIds, setTrickyIds] = useState<Set<string>>(new Set())
 
   // Track which prompts the current prompt has matched so we don't re-pay / re-count.
   const matchedPromptIds = useRef<Set<string>>(new Set())
 
   const currentPrompt = prompts[currentIndex] || null
   const isSessionComplete = currentIndex >= prompts.length && prompts.length > 0
+  const isCurrentPromptTricky = !!currentPrompt && trickyIds.has(currentPrompt.id)
 
   const startSession = useCallback(
     async (locationSet: ScavengerLocation): Promise<boolean> => {
@@ -84,6 +90,7 @@ export function useScavengerHunt({
         setPrompts(fetched)
         setCurrentIndex(0)
         setStats(emptyStats)
+        setTrickyIds(new Set())
         matchedPromptIds.current = new Set()
         return true
       } catch (err) {
@@ -199,6 +206,25 @@ export function useScavengerHunt({
     }
   }, [currentPrompt, sessionId, prompts, currentIndex])
 
+  // "This is tricky" — ask the system to drill this clue (>= 5 forced reappearances
+  // across future hunts). Optimistic + best-effort: it never blocks play and keeps
+  // the same clue (not a skip, not a replace).
+  const markTricky = useCallback(async () => {
+    if (!currentPrompt || !sessionId) return
+    if (trickyIds.has(currentPrompt.id)) return
+    const promptId = currentPrompt.id
+    setTrickyIds((prev) => new Set(prev).add(promptId))
+    try {
+      await fetch(`/api/scavenger-hunt/sessions/${sessionId}/prompt-action`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptId, action: 'struggle' }),
+      })
+    } catch {
+      // Best-effort; the optimistic flag stays so the child still sees confirmation.
+    }
+  }, [currentPrompt, sessionId, trickyIds])
+
   const completeSession = useCallback(async (): Promise<HuntSummary | null> => {
     if (!sessionId) return null
     try {
@@ -218,6 +244,7 @@ export function useScavengerHunt({
     setCurrentIndex(0)
     setSessionId(null)
     setStats(emptyStats)
+    setTrickyIds(new Set())
     setError(null)
     matchedPromptIds.current = new Set()
   }, [])
@@ -235,6 +262,8 @@ export function useScavengerHunt({
     submitPhoto,
     skipPrompt,
     replacePrompt,
+    markTricky,
+    isCurrentPromptTricky,
     advance,
     completeSession,
     reset,

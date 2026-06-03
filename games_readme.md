@@ -132,6 +132,40 @@ machinery. Structurally a sibling of Word Rescue.
 - **Escape hatch:** skip is unlimited; replace is capped per session
   (`SCAVENGER_HUNT_DEFAULTS.maxReplacementsPerSession`); retries per clue are capped.
 
+### Adaptive repetition & mastery
+
+Per-child, per-prompt memory lives in `scavenger_prompt_progress` (see Database Tables).
+Selection (`lib/services/scavenger-prompts.ts`) is progress-aware and bucketed by
+priority: **Struggling** (owed forced repeats) → **Fresh** (no history) → **Review**
+(seen, learning) → **Stale** (seen ≥6× but never found and not flagged). Mastered
+prompts are excluded; a hunt is never *only* drills (struggling capped at `ceil(limit/2)`).
+
+- **"This is tricky 🤔"** (a third control on the practice screen) flags the current clue:
+  it must reappear at least `SCAVENGER_HUNT_DEFAULTS.struggleRepeats` (5) more times across
+  future hunts. Re-tapping tops the counter back up. Flagging a mastered clue un-retires it.
+- **Mastery (retire):** a clue found `SCAVENGER_HUNT_DEFAULTS.masteryThreshold` (3) times,
+  with **no** outstanding tricky repeats, becomes `mastered` and drops out of selection.
+  A flagged clue therefore can't master until it has paid off its repeats *and* hit 3 finds.
+- **Counting:** `times_shown` / struggle-payoff increment once per clue per session (first
+  engagement — a verify or a skip); `times_found` increments on the first verified match
+  per session. All writes go through SECURITY DEFINER RPCs (`increment_scavenger_progress`,
+  `flag_scavenger_struggle`) for atomic increments + mastery evaluation.
+- **Mastered shelf:** a kid-facing trophy tab on the "My Finds" page
+  (`GET /api/scavenger-hunt/mastered`) celebrates retired clues.
+
+### Pre-K picture hints
+
+Pre-K children (lowest reading level, non-readers) see an AI-generated illustration above
+each clue. Images are generated **once, offline** (never during gameplay) and stored in the
+public `scavenger-hunt-prompt-images` bucket; `image_url` is attached per prompt. Gating is
+by the **child's** level, not the prompt's, so a Kindergartner who draws an easier `pre_k`
+prompt gets no picture (`imageUrl: null`). A broken/missing image falls back to text-only.
+
+- Generator service: `lib/services/scavenger-prompt-image-generator.ts` (DALL·E 3 → storage).
+- Driver: `scripts/generate-scavenger-prompt-images.ts` (re-runnable; emits a replayable
+  `…_set_scavenger_prek_image_urls.sql` migration of the URL writes).
+- Optional bank-expansion pipeline: `scripts/generate-scavenger-prompts.ts`.
+
 ### Settings (`app_settings`, parent rewards page)
 
 `scavenger_hunt_enabled`, `cash_per_scavenger_find`, `scavenger_completion_bonus`,
@@ -262,12 +296,16 @@ sentence_attempts       - Per-sentence results within a session
 ### Scavenger Hunt
 
 ```
-scavenger_hunt_prompts  - Shared, curated prompt bank (tagged by level/location/category)
-scavenger_hunt_sessions - One row per hunt (counters + cash totals)
-scavenger_hunt_finds    - One row per photo submission (photo path + AI verdict + cash)
+scavenger_hunt_prompts   - Shared, curated prompt bank (tagged by level/location/category;
+                           image_url/image_storage_path hold the optional Pre-K picture)
+scavenger_hunt_sessions  - One row per hunt (counters + cash totals)
+scavenger_hunt_finds     - One row per photo submission (photo path + AI verdict + cash)
+scavenger_prompt_progress - Per-child, per-prompt memory (times_shown/found, struggle
+                           repeats, learning|mastered) powering adaptive repetition & mastery
 ```
 
-Storage bucket: `scavenger-hunt-photos` (private; access via 7-day signed URLs).
+Storage buckets: `scavenger-hunt-photos` (private; kids' real photos, 7-day signed URLs)
+and `scavenger-hunt-prompt-images` (public; generic Pre-K illustrations, long cache).
 Cash flows through the shared `cash_rewards` table via the `upsert_scavenger_cash_reward`
 RPC (adds cash without touching the word-rescue `words_mastered_this_week` counter).
 
