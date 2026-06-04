@@ -1565,6 +1565,9 @@ export interface ScavengerHuntPrompt {
   // Pre-K picture hint. Only populated when the *child's* reading level is pre_k;
   // null for everyone else (the image stays server-side). See scavenger-prompts.ts.
   imageUrl: string | null;
+  // Pre-K color swatch (hex) for single-color clues ("Find something pink"); the
+  // color itself is the cue, so it supersedes imageUrl. Null for everyone else.
+  hintColor: string | null;
 }
 
 // Per-child, per-prompt progress for adaptive repetition & mastery.

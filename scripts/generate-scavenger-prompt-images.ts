@@ -20,6 +20,7 @@ import {
   generatePromptImage,
   type PromptImageRow,
 } from '../lib/services/scavenger-prompt-image-generator'
+import { extractHintColor } from '../lib/services/scavenger-color-hints'
 
 const DRY_RUN = process.argv.includes('--dry-run')
 
@@ -46,7 +47,7 @@ async function main() {
 
   const { data: prompts, error } = await supabase
     .from('scavenger_hunt_prompts')
-    .select('id, prompt_text, target_description, example_objects')
+    .select('id, prompt_text, target_description, example_objects, category')
     .eq('reading_level', 'pre_k')
     .is('image_url', null)
 
@@ -55,7 +56,16 @@ async function main() {
     process.exit(1)
   }
 
-  const rows = (prompts || []) as PromptImageRow[]
+  // Single-color clues ("Find something pink") show a plain color swatch in the UI,
+  // not a picture — an AI image of one object would mislead a non-reader. Skip them.
+  const all = (prompts || []) as (PromptImageRow & { category: string | null })[]
+  const skipped = all.filter((r) => extractHintColor(r.prompt_text, r.category))
+  const rows: PromptImageRow[] = all.filter(
+    (r) => !extractHintColor(r.prompt_text, r.category)
+  )
+  if (skipped.length > 0) {
+    console.log(`Skipping ${skipped.length} color clue(s) (rendered as a swatch).`)
+  }
   console.log(`${rows.length} pre_k prompt(s) need an image.`)
   if (rows.length === 0) return
 

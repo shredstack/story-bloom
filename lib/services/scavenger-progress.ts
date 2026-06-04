@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { SCAVENGER_HUNT_DEFAULTS } from '@/lib/types'
+import { extractHintColor } from './scavenger-color-hints'
 
 /**
  * Per-child, per-prompt progress for the scavenger hunt's adaptive repetition &
@@ -97,6 +98,7 @@ export interface MasteredPrompt {
   promptId: string
   promptText: string
   imageUrl: string | null
+  hintColor: string | null
   masteredAt: string | null
 }
 
@@ -112,7 +114,7 @@ export async function getMasteredPrompts(
   const { data, error } = await supabase
     .from('scavenger_prompt_progress')
     .select(
-      'prompt_id, mastered_at, scavenger_hunt_prompts!inner(prompt_text, image_url)'
+      'prompt_id, mastered_at, scavenger_hunt_prompts!inner(prompt_text, image_url, category)'
     )
     .eq('child_id', childId)
     .eq('status', 'mastered')
@@ -124,11 +126,16 @@ export async function getMasteredPrompts(
     const prompt = row.scavenger_hunt_prompts as unknown as {
       prompt_text: string
       image_url: string | null
+      category: string | null
     }
+    const hintColor = opts.withImages
+      ? extractHintColor(prompt.prompt_text, prompt.category)
+      : null
     return {
       promptId: row.prompt_id as string,
       promptText: prompt.prompt_text,
-      imageUrl: opts.withImages ? prompt.image_url : null,
+      imageUrl: opts.withImages && !hintColor ? prompt.image_url : null,
+      hintColor,
       masteredAt: row.mastered_at as string | null,
     }
   })
