@@ -7,6 +7,7 @@ interface MasteredPrompt {
   promptId: string
   promptText: string
   imageUrl: string | null
+  hintColor: string | null
   masteredAt: string | null
 }
 
@@ -69,17 +70,27 @@ export function MasteredList({ childId }: MasteredListProps) {
           <div className="absolute top-1 right-1 text-lg" aria-hidden>
             ⭐
           </div>
-          {m.imageUrl && (
+          {m.hintColor ? (
             <div className="flex justify-center mb-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={m.imageUrl}
-                alt=""
+              <div
                 aria-hidden
-                className="w-20 h-20 object-contain rounded-xl bg-white"
-                loading="lazy"
+                style={{ backgroundColor: m.hintColor }}
+                className="w-20 h-20 rounded-xl border border-amber-200"
               />
             </div>
+          ) : (
+            m.imageUrl && (
+              <div className="flex justify-center mb-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={m.imageUrl}
+                  alt=""
+                  aria-hidden
+                  className="w-20 h-20 object-contain rounded-xl bg-white"
+                  loading="lazy"
+                />
+              </div>
+            )
           )}
           <p className="text-sm font-semibold text-amber-900 line-clamp-3">
             {m.promptText}

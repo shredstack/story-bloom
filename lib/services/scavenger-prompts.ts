@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ScavengerLocation, ScavengerReadingLevel } from '@/lib/types'
 import { getProgressForChild, type PromptProgress } from './scavenger-progress'
+import { extractHintColor } from './scavenger-color-hints'
 
 /**
  * Prompt selection for the scavenger hunt.
@@ -31,6 +32,9 @@ export interface ClientPrompt {
   location: ScavengerLocation
   category: string | null
   imageUrl: string | null
+  // Pre-K swatch hint for single-color clues ("Find something pink"). Takes the
+  // place of an AI image — the color itself is the cue. Null for everyone else.
+  hintColor: string | null
 }
 
 /**
@@ -42,12 +46,18 @@ export function toClientPrompt(
   row: ScavengerPromptRow,
   opts: { withImages?: boolean } = {}
 ): ClientPrompt {
+  const hintColor = opts.withImages
+    ? extractHintColor(row.prompt_text, row.category)
+    : null
   return {
     id: row.id,
     promptText: row.prompt_text,
     location: row.location,
     category: row.category,
-    imageUrl: opts.withImages ? row.image_url : null,
+    // A color swatch supersedes the picture hint for single-color clues, so don't
+    // also ship an image the card would ignore.
+    imageUrl: opts.withImages && !hintColor ? row.image_url : null,
+    hintColor,
   }
 }
 

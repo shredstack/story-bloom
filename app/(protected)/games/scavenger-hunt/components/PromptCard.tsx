@@ -16,9 +16,11 @@ const LOCATION_BADGE: Record<string, { emoji: string; label: string }> = {
 }
 
 // The reading moment: large, high-contrast, dyslexia-friendly. No read-aloud —
-// decoding the prompt IS the reading practice. For Pre-K (non-readers), a picture
-// hint leads above the text so they know what the word says; the text stays below
-// (print exposure still matters). imageUrl is null for everyone else.
+// decoding the prompt IS the reading practice. For Pre-K (non-readers), a hint leads
+// above the text so they know what the word says; the text stays below (print
+// exposure still matters). For single-color clues ("Find something pink") the hint is
+// a plain color swatch — the color itself, not a (misleading) picture of one object.
+// Otherwise it's the AI picture hint. Both are null for everyone but Pre-K.
 export function PromptCard({ prompt }: PromptCardProps) {
   const { fontSize } = useFontSize()
   const badge = LOCATION_BADGE[prompt.location] || LOCATION_BADGE.either
@@ -29,7 +31,9 @@ export function PromptCard({ prompt }: PromptCardProps) {
     setImageOk(true) // reset when the clue changes
   }, [prompt.imageUrl])
 
-  const showImage = !!prompt.imageUrl && imageOk
+  // A color swatch supersedes the picture hint for color clues.
+  const showSwatch = !!prompt.hintColor
+  const showImage = !showSwatch && !!prompt.imageUrl && imageOk
 
   return (
     <Card className="p-8 text-center bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200">
@@ -37,6 +41,16 @@ export function PromptCard({ prompt }: PromptCardProps) {
         <span>{badge.emoji}</span>
         <span>{badge.label}</span>
       </div>
+
+      {showSwatch && (
+        <div className="mb-6 flex justify-center">
+          <div
+            aria-hidden
+            style={{ backgroundColor: prompt.hintColor as string }}
+            className="w-48 h-48 sm:w-56 sm:h-56 rounded-3xl shadow-md border-2 border-amber-200"
+          />
+        </div>
+      )}
 
       {showImage && (
         <div className="mb-6 flex justify-center">
