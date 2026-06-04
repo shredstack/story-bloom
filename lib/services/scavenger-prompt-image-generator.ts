@@ -67,25 +67,37 @@ export async function generatePromptImage(
   const openai = new OpenAI({ apiKey: openaiApiKey })
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+  // Default to OpenAI's current image model. Older projects may have 'dall-e-3'
+  // instead; both the model and quality are env-overridable so we can switch
+  // without a code change. (gpt-image-1 quality: low|medium|high|auto;
+  // dall-e-3 quality: standard|hd.)
+  const model = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1'
+  const quality = process.env.OPENAI_IMAGE_QUALITY || 'medium'
+
   try {
     const response = await openai.images.generate({
-      model: 'dall-e-3',
+      model,
       prompt: buildImagePrompt(row),
       n: 1,
       size: '1024x1024',
-      quality: 'standard',
+      quality: quality as 'low' | 'medium' | 'high' | 'auto' | 'standard' | 'hd',
     })
 
-    const tempImageUrl = response.data?.[0]?.url
-    if (!tempImageUrl) {
-      return { success: false, error: 'No image URL returned from DALL-E' }
+    // gpt-image-1 returns base64 (b64_json); dall-e-3 returns a temporary URL.
+    // Handle whichever this model produced.
+    const datum = response.data?.[0]
+    let imageBuffer: Buffer | ArrayBuffer
+    if (datum?.b64_json) {
+      imageBuffer = Buffer.from(datum.b64_json, 'base64')
+    } else if (datum?.url) {
+      const imageResponse = await fetch(datum.url)
+      if (!imageResponse.ok) {
+        return { success: false, error: 'Failed to fetch generated image' }
+      }
+      imageBuffer = await imageResponse.arrayBuffer()
+    } else {
+      return { success: false, error: 'No image data returned from the model' }
     }
-
-    const imageResponse = await fetch(tempImageUrl)
-    if (!imageResponse.ok) {
-      return { success: false, error: 'Failed to fetch generated image' }
-    }
-    const imageBuffer = await imageResponse.arrayBuffer()
 
     const storagePath = `prompts/${row.id}.png`
     const { error: uploadError } = await supabase.storage
