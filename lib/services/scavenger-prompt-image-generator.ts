@@ -36,10 +36,13 @@ export function buildImagePrompt(row: PromptImageRow): string {
     row.target_description?.trim() ||
     row.example_objects?.[0] ||
     row.prompt_text.replace(/^find\s+/i, '').replace(/[.!?]$/, '')
+  // NOTE: do not reference a child/"preschooler"/age here — DALL-E's safety filter
+  // rejects (HTTP 400) any prompt that mentions minors, even for an object drawing.
+  // Keep the style cues child-friendly without naming a person.
   return (
-    `A simple, friendly, brightly colored flat illustration of ${target}, ` +
-    `a single object centered on a plain white background. ` +
-    `Picture-book style for a preschooler. No text, no words, no letters.`
+    `A simple, friendly, brightly colored flat cartoon illustration of ${target}, ` +
+    `a single object centered on a plain white background, in a clean, rounded ` +
+    `picture-book art style. No people, no text, no words, no letters.`
   )
 }
 
@@ -122,12 +125,10 @@ export async function generatePromptImage(
     }
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
-      if (error.status === 429) {
-        return { success: false, error: 'Rate limited — slow down and retry.' }
-      }
-      if (error.status === 400) {
-        return { success: false, error: 'Image request rejected (content policy?).' }
-      }
+      // Surface the real API message + code. A 400 is often a bad param, missing
+      // model access, or a prompt-safety rejection — not always "content policy".
+      const detail = error.message || error.code || error.type || 'no detail'
+      return { success: false, error: `OpenAI ${error.status}: ${detail}` }
     }
     return {
       success: false,
