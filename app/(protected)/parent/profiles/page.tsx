@@ -349,6 +349,11 @@ export default function ParentProfilesPage() {
                       setReadingPrefs((prev) => ({ ...prev, ...patch }))
                     }
                     onReset={() => setReadingPrefs({})}
+                    // Clearing `calibrated` makes the reader show the finger
+                    // check again the next time she opens a story.
+                    onRecalibrate={() =>
+                      setReadingPrefs((prev) => ({ ...prev, calibrated: false }))
+                    }
                   />
                 </div>
               )}

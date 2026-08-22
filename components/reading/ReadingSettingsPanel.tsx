@@ -11,6 +11,7 @@ import type {
   HighlightPreset,
   LineHeightStep,
   MaskLines,
+  MaskStrength,
   PageTint,
   ParagraphGap,
   PartialReadingPreferences,
@@ -218,6 +219,11 @@ const MASK_LINE_OPTIONS: { value: MaskLines; label: string }[] = [
   { value: 5, label: '5 lines' },
 ]
 
+const MASK_STRENGTH_OPTIONS: { value: MaskStrength; label: string }[] = [
+  { value: 'soft', label: 'A little' },
+  { value: 'strong', label: 'A lot' },
+]
+
 const TINT_LABELS: Record<PageTint, string> = {
   white: 'White',
   cream: 'Cream',
@@ -287,16 +293,25 @@ export function ReadingSettingsPanel({
         </Field>
 
         {value.guideMode === 'mask' && (
-          <Field
-            label="How many lines to show"
-            hint="Everything else is dimmed."
-          >
-            <ChoiceRow
-              options={MASK_LINE_OPTIONS}
-              value={value.maskLines}
-              onSelect={(maskLines) => onChange({ maskLines })}
-            />
-          </Field>
+          <>
+            <Field
+              label="How many lines to show"
+              hint="Everything else is dimmed."
+            >
+              <ChoiceRow
+                options={MASK_LINE_OPTIONS}
+                value={value.maskLines}
+                onSelect={(maskLines) => onChange({ maskLines })}
+              />
+            </Field>
+            <Field label="How much to dim the rest">
+              <ChoiceRow
+                options={MASK_STRENGTH_OPTIONS}
+                value={value.maskStrength}
+                onSelect={(maskStrength) => onChange({ maskStrength })}
+              />
+            </Field>
+          </>
         )}
 
         <Field label="Highlight color" hint="Pick a favorite.">

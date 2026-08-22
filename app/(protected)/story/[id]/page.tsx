@@ -9,7 +9,12 @@ import { useReadingPreferences } from '@/lib/hooks/useReadingPreferences'
 import { useLineModel } from '@/lib/hooks/useLineModel'
 import { useReadingGuide } from '@/lib/hooks/useReadingGuide'
 import { Button, Card } from '@/components/ui'
-import { ReadingSurface, ReadingBottomBar } from '@/components/reading'
+import {
+  ReadingSurface,
+  ReadingBottomBar,
+  ReadingGutterHandle,
+  ReadingCalibration,
+} from '@/components/reading'
 import { flattenTokens, tokenizeStory } from '@/lib/reading/tokenize'
 import { type FontSize, type Story, type CustomIllustration } from '@/lib/types'
 
@@ -26,7 +31,7 @@ export default function StoryReaderPage({ params }: PageProps) {
   const { illustrations: customIllustrations } = useCustomIllustrations(user?.id)
   // Per-child typography + reading guide. `default_text_size` remains the
   // fallback so profiles that predate this panel keep their font size.
-  const { preferences, setPreference } = useReadingPreferences({
+  const { preferences, setPreference, setPreferences } = useReadingPreferences({
     childId: selectedChild?.id,
     readingLevel: selectedChild?.reading_level,
     fallbackFontSize: selectedChild?.default_text_size,
@@ -259,7 +264,9 @@ export default function StoryReaderPage({ params }: PageProps) {
           preferences={preferences}
           guide={guide}
           className="rounded-2xl px-4 py-6 md:px-6"
-        />
+        >
+          {guide.isReady && <ReadingGutterHandle guide={guide} />}
+        </ReadingSurface>
 
         {/* Line changes are announced for keyboard navigation only — during a
             touch drag this would fire constantly. */}
@@ -366,6 +373,16 @@ export default function StoryReaderPage({ params }: PageProps) {
           onBack={guide.previousLine}
           onNext={guide.nextLine}
           disabled={!guide.isReady}
+        />
+      )}
+
+      {guideOn && !preferences.calibrated && (
+        <ReadingCalibration
+          preferences={preferences}
+          onDone={(touchOffsetLines) =>
+            setPreferences({ touchOffsetLines, calibrated: true })
+          }
+          onSkip={() => setPreference('calibrated', true)}
         />
       )}
 
