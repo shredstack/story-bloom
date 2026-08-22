@@ -116,10 +116,10 @@ export default function OnboardingPage() {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Let's set up your child's profile
+            Let&apos;s set up your child&apos;s profile
           </h1>
           <p className="text-gray-600">
-            This helps us create personalized stories they'll love
+            This helps us create personalized stories they&apos;ll love
           </p>
         </div>
 
@@ -236,7 +236,7 @@ export default function OnboardingPage() {
               <h2 className="text-xl font-bold text-gray-800 mb-4">Physical Characteristics (Optional)</h2>
               <p className="text-gray-600 text-sm mb-4">
                 Help us create story illustrations that look more like {name || 'your child'}.
-                All fields are optional - skip any you'd prefer not to share.
+                All fields are optional - skip any you&apos;d prefer not to share.
               </p>
               <PhysicalCharacteristicsForm
                 data={physicalCharacteristics}

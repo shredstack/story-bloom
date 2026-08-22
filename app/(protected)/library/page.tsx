@@ -59,7 +59,7 @@ export default function LibraryPage() {
     <div className="max-w-6xl mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">{selectedChild.name}'s Stories</h1>
+          <h1 className="text-3xl font-bold text-gray-800">{selectedChild.name}&apos;s Stories</h1>
           <p className="text-gray-600">{stories.length} stories in library</p>
         </div>
         <Button onClick={() => router.push('/dashboard')}>

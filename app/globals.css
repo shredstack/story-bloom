@@ -40,6 +40,190 @@ html[data-native] [contenteditable='true'] {
 }
 
 /* ============================================
+   Reading Guide — typography surface
+   Driven entirely by the --rg-* custom properties that lib/reading/cssVars.ts
+   writes onto the .reading-surface element. Keeping the mapping in one TS file
+   and the rules in one CSS block means a settings tweak is a one-line change.
+   ============================================ */
+
+.reading-surface {
+  /* Defaults so the surface still renders sanely if a var is ever missing. */
+  --rg-font-size: 1.25rem;
+  --rg-font-family: 'Nunito', system-ui, sans-serif;
+  --rg-letter-spacing: 0.06em;
+  --rg-word-spacing: 0.16em;
+  --rg-line-height: 1.8;
+  --rg-column-width: 46ch;
+  --rg-paragraph-gap: 1.6em;
+  --rg-page-tint: #fffbf0;
+  --rg-band-color: #fff1a8;
+  --rg-word-color: #ffd84d;
+  --rg-mask-alpha: 0.35;
+
+  position: relative;
+  background: var(--rg-page-tint);
+  color: #1f2937;
+  font-family: var(--rg-font-family);
+  font-size: var(--rg-font-size);
+  letter-spacing: var(--rg-letter-spacing);
+  word-spacing: var(--rg-word-spacing);
+  line-height: var(--rg-line-height);
+}
+
+/* Non-negotiable body-text invariants (spec §5.5): left-aligned, never
+   justified, never italic or underlined, no hyphenation — justified text
+   creates irregular word gaps ("rivers") that worsen tracking. */
+.reading-surface .reading-paragraph {
+  position: relative;
+  z-index: 2; /* keeps glyphs ABOVE the band/word rects — see §6.5 */
+  max-width: var(--rg-column-width);
+  margin: 0 auto var(--rg-paragraph-gap);
+  text-align: left;
+  text-decoration: none;
+  font-style: normal;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+
+.reading-surface .reading-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+/* Word spans exist only so they can be measured. They must stay `inline`:
+   inline-block changes baseline alignment and breaks natural line wrapping. */
+.reading-surface .reading-word {
+  display: inline;
+}
+
+/* While the guide is on, the surface must not be selectable and must not let
+   iOS Safari zoom on double-tap. html[data-native] covers the native shell
+   only, so the web build has to set this itself (spec §6.10). */
+.reading-surface[data-guide='on'] {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Applied for the duration of a hold-then-slide drag ONLY. Never static: a
+   statically non-panning reading surface would break page scrolling entirely. */
+.reading-surface.reading-surface--dragging {
+  touch-action: none;
+}
+
+.reading-guide-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  border-radius: 6px;
+  will-change: transform;
+}
+
+.reading-guide-band {
+  z-index: 0;
+  background: var(--rg-band-color);
+}
+
+.reading-guide-word {
+  z-index: 1;
+  background: var(--rg-word-color);
+}
+
+/* Mask mode is ONE element, not four: the huge spread paints everything
+   outside the band in a single composited layer with no gap seams. */
+.reading-guide-band[data-mask='on'] {
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(31, 41, 55, var(--rg-mask-alpha));
+}
+
+.reading-guide-layer[data-animate='on'] {
+  transition: transform 90ms ease-out;
+}
+
+/* Pulse while the word is being spoken.
+   NOT `animate-trick-pulse`: that animates `transform: scale()`, and this
+   element's `transform` is the inline translate() that positions it — the
+   animation would yank the highlight to the top-left corner. Brightness is
+   the one channel that is free here. */
+@keyframes reading-word-speaking {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(0.86);
+  }
+}
+
+.reading-guide-word.is-speaking {
+  animation: reading-word-speaking 600ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-guide-word.is-speaking {
+    animation: none;
+  }
+}
+
+/* The gutter handle ("the bookmark"). A dedicated 56px target, so
+   `touch-action: none` is safe here in a way it never is on the text itself. */
+.reading-gutter-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  cursor: grab;
+  touch-action: none;
+  will-change: transform;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.reading-gutter-handle:active {
+  cursor: grabbing;
+}
+
+.reading-gutter-handle__grip {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px 4px 4px 12px; /* bookmark tab */
+  background: var(--rg-word-color);
+  border: 2px solid rgba(31, 41, 55, 0.18);
+  box-shadow: 0 2px 6px rgba(31, 41, 55, 0.18);
+}
+
+.reading-gutter-handle[data-animate='on'] {
+  transition: transform 90ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-gutter-handle[data-animate='on'] {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-guide-layer[data-animate='on'] {
+    transition: none;
+  }
+}
+
+@media print {
+  .reading-guide-layer {
+    display: none !important;
+  }
+  .reading-surface {
+    background: white !important;
+  }
+}
+
+/* ============================================
    Pet Habitat Idle Animations (Phase 2)
    ============================================ */
 

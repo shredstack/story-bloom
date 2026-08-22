@@ -348,7 +348,7 @@ export default function DashboardPage() {
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-700 mb-2">No stories yet</h3>
-          <p className="text-gray-500">Generate your first story to start {selectedChild.name}'s reading adventure!</p>
+          <p className="text-gray-500">Generate your first story to start {selectedChild.name}&apos;s reading adventure!</p>
         </Card>
       )}
     </div>

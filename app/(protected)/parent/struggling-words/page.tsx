@@ -8,6 +8,7 @@ import { useStrugglingWords } from '@/lib/hooks/useStrugglingWords'
 import { useAppSettings } from '@/lib/hooks/useAppSettings'
 import { Button, Input, Card, TextArea, NumberInput } from '@/components/ui'
 import { VoiceRecordButton } from '@/components/VoiceRecordButton'
+import { ReadingTapReviewQueue } from '@/components/parent/ReadingTapReviewQueue'
 import { MASTERY_STAGE_INFO, type StrugglingWord, type WordMasteryStage } from '@/lib/types'
 
 type TabFilter = 'all' | WordMasteryStage
@@ -152,6 +153,14 @@ export default function ParentStrugglingWordsPage() {
           <Button variant="outline">Back to Word Rescue</Button>
         </Link>
       </div>
+
+      {/* Words she asked to hear while reading — parent confirms before any
+          of them reach the practice list. */}
+      <ReadingTapReviewQueue
+        childId={selectedChild.id}
+        childName={selectedChild.name}
+        onAddWord={addWord}
+      />
 
       {/* Stats Summary */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">

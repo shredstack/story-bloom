@@ -1,3 +1,5 @@
+import type { PartialReadingPreferences } from './reading/types';
+
 export interface Child {
   id: string;
   user_id: string;
@@ -16,6 +18,12 @@ export interface Child {
   eye_color: EyeColor | null;
   gender: Gender | null;
   pronouns: Pronouns | null;
+  /**
+   * Reading guide + typography preferences. Sparse — only keys the parent has
+   * changed; merge over DEFAULT_READING_PREFERENCES. Optional so existing
+   * create/update call sites keep compiling. See lib/reading/types.ts.
+   */
+  reading_preferences?: PartialReadingPreferences | null;
 }
 
 export interface Illustration {
