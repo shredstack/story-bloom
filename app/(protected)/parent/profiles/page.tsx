@@ -6,6 +6,9 @@ import { useChild, useAuth } from '../../ProtectedLayoutClient'
 import { uploadProfileImage, deleteProfileImage } from '@/lib/hooks/useProfileImage'
 import { Button, Input, Select, TextArea, TagInput, Card } from '@/components/ui'
 import { PhysicalCharacteristicsForm, type PhysicalCharacteristicsData } from '@/components/ui/PhysicalCharacteristicsForm'
+import { ReadingSettingsPanel } from '@/components/reading'
+import { resolveReadingPreferences } from '@/lib/reading/defaults'
+import type { PartialReadingPreferences } from '@/lib/reading/types'
 import {
   READING_LEVELS,
   type Child,
@@ -40,6 +43,10 @@ export default function ParentProfilesPage() {
     pronouns: null,
   })
   const [showCharacteristics, setShowCharacteristics] = useState(false)
+  // Sparse: only what the parent has changed. Merged over the level defaults
+  // for display, stored as-is in children.reading_preferences.
+  const [readingPrefs, setReadingPrefs] = useState<PartialReadingPreferences>({})
+  const [showReading, setShowReading] = useState(false)
 
   const resetForm = () => {
     setName('')
@@ -58,6 +65,8 @@ export default function ParentProfilesPage() {
       pronouns: null,
     })
     setShowCharacteristics(false)
+    setReadingPrefs({})
+    setShowReading(false)
     setError('')
   }
 
@@ -81,6 +90,9 @@ export default function ParentProfilesPage() {
     // Show characteristics section if any values are set
     const hasCharacteristics = child.profile_image_url || child.skin_tone || child.hair_color || child.eye_color || child.gender || child.pronouns
     setShowCharacteristics(!!hasCharacteristics)
+    const storedReading = child.reading_preferences ?? {}
+    setReadingPrefs(storedReading)
+    setShowReading(Object.keys(storedReading).length > 0)
     setIsCreating(false)
   }
 
@@ -152,6 +164,7 @@ export default function ParentProfilesPage() {
       eye_color: physicalCharacteristics.eyeColor,
       gender: physicalCharacteristics.gender,
       pronouns: physicalCharacteristics.pronouns,
+      reading_preferences: readingPrefs,
     }
 
     if (isCreating) {
@@ -296,6 +309,46 @@ export default function ParentProfilesPage() {
                     data={physicalCharacteristics}
                     onChange={setPhysicalCharacteristics}
                     showProfileImage={true}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Reading & Text Section */}
+            <div className="border-t border-gray-200 pt-4 mt-4">
+              <button
+                type="button"
+                onClick={() => setShowReading(!showReading)}
+                className="w-full flex items-center justify-between text-left"
+              >
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Reading &amp; Text</h3>
+                  <p className="text-sm text-gray-500">
+                    Reading guide, spacing, line length, and page color
+                  </p>
+                </div>
+                <svg
+                  className={`w-5 h-5 text-gray-400 transition-transform ${showReading ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {showReading && (
+                <div className="mt-4">
+                  <ReadingSettingsPanel
+                    childName={name.trim() || undefined}
+                    value={resolveReadingPreferences(readingPrefs, {
+                      readingLevel,
+                      fallbackFontSize: defaultTextSize,
+                    })}
+                    onChange={(patch) =>
+                      setReadingPrefs((prev) => ({ ...prev, ...patch }))
+                    }
+                    onReset={() => setReadingPrefs({})}
                   />
                 </div>
               )}

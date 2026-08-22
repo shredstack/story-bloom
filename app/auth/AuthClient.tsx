@@ -157,7 +157,7 @@ export default function AuthClient() {
             <p className="text-gray-600 text-sm">
               {mode === 'signin' ? (
                 <>
-                  Don't have an account?{' '}
+                  Don&apos;t have an account?{' '}
                   <button
                     type="button"
                     onClick={() => {

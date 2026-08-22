@@ -134,7 +134,7 @@ export function PhysicalCharacteristicsForm({
       </div>
 
       <p className="text-xs text-gray-500">
-        All fields default to "Diverse" which means the AI can choose any characteristics when
+        All fields default to &ldquo;Diverse&rdquo; which means the AI can choose any characteristics when
         generating illustrations. You can change these settings at any time.
       </p>
     </div>

@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import { useAuth, useChild } from '../../ProtectedLayoutClient'
 import { useStories } from '@/lib/hooks/useStories'
 import { useCustomIllustrations } from '@/lib/hooks/useCustomIllustrations'
-import { useFontSize } from '@/lib/hooks/useFontSize'
+import { useReadingPreferences } from '@/lib/hooks/useReadingPreferences'
 import { Button, Card } from '@/components/ui'
-import { FONT_SIZE_CLASSES, type FontSize, type Story, type CustomIllustration } from '@/lib/types'
+import { ReadingSurface } from '@/components/reading'
+import { type FontSize, type Story, type CustomIllustration } from '@/lib/types'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -20,7 +21,13 @@ export default function StoryReaderPage({ params }: PageProps) {
   const { selectedChild } = useChild()
   const { stories, loading: storiesLoading, toggleFavorite, deleteStory, updateStoryIllustrations } = useStories(selectedChild?.id)
   const { illustrations: customIllustrations } = useCustomIllustrations(user?.id)
-  const { fontSize, setFontSize } = useFontSize()
+  // Per-child typography + reading guide. `default_text_size` remains the
+  // fallback so profiles that predate this panel keep their font size.
+  const { preferences, setPreference } = useReadingPreferences({
+    childId: selectedChild?.id,
+    readingLevel: selectedChild?.reading_level,
+    fallbackFontSize: selectedChild?.default_text_size,
+  })
 
   const [story, setStory] = useState<Story | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -33,12 +40,6 @@ export default function StoryReaderPage({ params }: PageProps) {
       setStory(found || null)
     }
   }, [id, stories])
-
-  useEffect(() => {
-    if (selectedChild?.default_text_size) {
-      setFontSize(selectedChild.default_text_size)
-    }
-  }, [selectedChild, setFontSize])
 
   if (storiesLoading) {
     return (
@@ -181,9 +182,9 @@ export default function StoryReaderPage({ params }: PageProps) {
             {fontSizes.map(size => (
               <button
                 key={size}
-                onClick={() => setFontSize(size)}
+                onClick={() => setPreference('fontSize', size)}
                 className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                  fontSize === size
+                  preferences.fontSize === size
                     ? 'bg-white text-primary-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-800'
                 }`}
@@ -205,7 +206,7 @@ export default function StoryReaderPage({ params }: PageProps) {
           </h1>
           {story.custom_prompt && (
             <p className="text-sm text-gray-500 italic">
-              Inspired by: "{story.custom_prompt}"
+              Inspired by: &ldquo;{story.custom_prompt}&rdquo;
             </p>
           )}
           <p className="text-xs text-gray-400 mt-2">
@@ -219,9 +220,11 @@ export default function StoryReaderPage({ params }: PageProps) {
           </p>
         </header>
 
-        <div className="prose prose-lg max-w-none">
-          <p className={`${FONT_SIZE_CLASSES[fontSize]} whitespace-pre-wrap`}>{story.content}</p>
-        </div>
+        <ReadingSurface
+          content={story.content}
+          preferences={preferences}
+          className="rounded-2xl px-4 py-6 md:px-6"
+        />
 
         {generatedIllustration && (
           generatedIllustration.imageUrl ? (
@@ -322,7 +325,7 @@ export default function StoryReaderPage({ params }: PageProps) {
           <Card className="max-w-sm w-full">
             <h3 className="text-lg font-bold text-gray-800 mb-2">Delete Story?</h3>
             <p className="text-gray-600 mb-4">
-              Are you sure you want to delete "{story.title}"? This action cannot be undone.
+              Are you sure you want to delete &ldquo;{story.title}&rdquo;? This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <Button
@@ -365,7 +368,7 @@ export default function StoryReaderPage({ params }: PageProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
                 </div>
-                <p className="text-gray-600 mb-4">You haven't uploaded any illustrations yet.</p>
+                <p className="text-gray-600 mb-4">You haven&apos;t uploaded any illustrations yet.</p>
                 <Button onClick={() => router.push('/illustrations')}>
                   Go to Illustrations
                 </Button>

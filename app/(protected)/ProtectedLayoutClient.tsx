@@ -228,6 +228,9 @@ export default function ProtectedLayoutClient({ user, initialChildren, children:
             {!immersive && (
               <Header
                 user={user}
+                /* `children` here is the list of child PROFILES, not React
+                   children. Renaming HeaderProps is a separate cleanup. */
+                // eslint-disable-next-line react/no-children-prop
                 children={childrenList}
                 selectedChild={selectedChild}
                 onSelectChild={selectChild}

@@ -31,7 +31,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Pet not found' }, { status: 404 });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const petData = pet as any;
     const childUserId = petData.children?.user_id;
     if (childUserId !== user.id) {
@@ -102,7 +101,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Pet not found' }, { status: 404 });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const petData = pet as any;
     const childId = petData.child_id;
     const childUserId = petData.children?.user_id;
@@ -126,7 +124,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Verify the accessory matches the slot
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const accessory = childAccessory.accessory as any;
     if (accessory && accessory.type !== slot) {
       return NextResponse.json(
@@ -207,7 +204,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Pet not found' }, { status: 404 });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const petData = pet as any;
     const childUserId = petData.children?.user_id;
     if (childUserId !== user.id) {
