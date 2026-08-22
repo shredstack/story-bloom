@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useState, useEffect, useMemo, useRef, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth, useChild } from '../../ProtectedLayoutClient'
 import { useStories } from '@/lib/hooks/useStories'
 import { useCustomIllustrations } from '@/lib/hooks/useCustomIllustrations'
 import { useReadingPreferences } from '@/lib/hooks/useReadingPreferences'
+import { useLineModel } from '@/lib/hooks/useLineModel'
+import { useReadingGuide } from '@/lib/hooks/useReadingGuide'
 import { Button, Card } from '@/components/ui'
-import { ReadingSurface } from '@/components/reading'
+import { ReadingSurface, ReadingBottomBar } from '@/components/reading'
+import { flattenTokens, tokenizeStory } from '@/lib/reading/tokenize'
 import { type FontSize, type Story, type CustomIllustration } from '@/lib/types'
 
 interface PageProps {
@@ -40,6 +43,33 @@ export default function StoryReaderPage({ params }: PageProps) {
       setStory(found || null)
     }
   }, [id, stories])
+
+  // --- Reading guide -------------------------------------------------------
+  // These hooks run unconditionally (the early returns below would otherwise
+  // change hook order); with the guide off they attach nothing and measure
+  // nothing, so the cost really is zero.
+  const surfaceRef = useRef<HTMLDivElement>(null)
+  const guideOn = preferences.guideMode !== 'off'
+  const content = story?.content ?? ''
+  const paragraphs = useMemo(() => tokenizeStory(content), [content])
+  const tokens = useMemo(() => flattenTokens(paragraphs), [paragraphs])
+
+  const { model, isReady } = useLineModel({
+    containerRef: surfaceRef,
+    enabled: guideOn && content.length > 0,
+    content,
+    preferences,
+  })
+
+  const guide = useReadingGuide({
+    containerRef: surfaceRef,
+    model,
+    isReady,
+    preferences,
+    tokens,
+    storyId: story?.id ?? '',
+    onTurnOffGuide: () => setPreference('guideMode', 'off'),
+  })
 
   if (storiesLoading) {
     return (
@@ -175,7 +205,9 @@ export default function StoryReaderPage({ params }: PageProps) {
         </div>
       </div>
 
-      <Card className="mb-6 no-print">
+      {/* With the guide on, the bottom bar owns the reader's controls; this
+          card is what a guide-off reader still needs for text size. */}
+      <Card className={`mb-6 no-print ${guideOn ? 'hidden' : ''}`}>
         <div className="flex items-center justify-between mb-4">
           <span className="text-sm font-medium text-gray-500">Font Size</span>
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -221,10 +253,19 @@ export default function StoryReaderPage({ params }: PageProps) {
         </header>
 
         <ReadingSurface
+          surfaceRef={surfaceRef}
           content={story.content}
+          paragraphs={paragraphs}
           preferences={preferences}
+          guide={guide}
           className="rounded-2xl px-4 py-6 md:px-6"
         />
+
+        {/* Line changes are announced for keyboard navigation only — during a
+            touch drag this would fire constantly. */}
+        <div aria-live="polite" className="sr-only">
+          {guide.liveMessage}
+        </div>
 
         {generatedIllustration && (
           generatedIllustration.imageUrl ? (
@@ -319,6 +360,14 @@ export default function StoryReaderPage({ params }: PageProps) {
           </div>
         </footer>
       </article>
+
+      {guideOn && (
+        <ReadingBottomBar
+          onBack={guide.previousLine}
+          onNext={guide.nextLine}
+          disabled={!guide.isReady}
+        />
+      )}
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
