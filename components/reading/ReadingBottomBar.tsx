@@ -1,28 +1,41 @@
 'use client'
 
-import type { ReactNode } from 'react'
 import { KidButton } from '@/components/games/KidButton'
 
 interface ReadingBottomBarProps {
+  /** With the guide off, only the settings gear shows. */
+  guideOn: boolean
   onBack: () => void
   onNext: () => void
+  onSay: () => void
+  onOpenSettings: () => void
+  /** Line controls are dead until the line model is measured. */
   disabled?: boolean
-  /** Extra controls (Say it, settings) added in later phases. */
-  children?: ReactNode
+  /** No word placed yet, or the guide is on a punctuation-only token. */
+  canSay?: boolean
+  speaking?: boolean
 }
 
 /**
- * The primary line control (spec §5.7).
+ * The kid-facing control surface (spec §5.7).
  *
- * This exists for the child who finds any dragging hard: two enormous targets
- * that never fight the scroller and need no gesture knowledge at all. Reuses
- * KidButton for the 80pt target, hit-slop, tap debounce and haptics.
+ *   [ ← Back ]   [ 🔊 Say it ]   [ Next line → ]   [⚙]
+ *
+ * "Say it" is the PRIMARY path to hearing a word — double-tap is the shortcut
+ * for a child who has found it. A button needs no gesture knowledge at all,
+ * which is the whole reason it is here.
+ *
+ * Reuses KidButton for the 80pt targets, hit-slop, tap debounce and haptics.
  */
 export function ReadingBottomBar({
+  guideOn,
   onBack,
   onNext,
+  onSay,
+  onOpenSettings,
   disabled = false,
-  children,
+  canSay = false,
+  speaking = false,
 }: ReadingBottomBarProps) {
   return (
     <div
@@ -31,27 +44,52 @@ export function ReadingBottomBar({
       style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
     >
       <div className="flex items-center justify-center gap-3 flex-wrap">
+        {guideOn && (
+          <KidButton
+            size="lg"
+            variant="quiet"
+            onPress={onBack}
+            disabled={disabled}
+            aria-label="Back a line"
+          >
+            <span aria-hidden>←</span>
+            <span>Back</span>
+          </KidButton>
+        )}
+
+        {guideOn && (
+          <KidButton
+            size="lg"
+            variant="secondary"
+            onPress={onSay}
+            disabled={disabled || !canSay}
+            aria-label="Say the highlighted word"
+            className={speaking ? 'animate-trick-pulse' : ''}
+          >
+            <span aria-hidden>🔊</span>
+            <span>Say it</span>
+          </KidButton>
+        )}
+
+        {guideOn && (
+          <KidButton
+            size="lg"
+            onPress={onNext}
+            disabled={disabled}
+            aria-label="Next line"
+          >
+            <span>Next line</span>
+            <span aria-hidden>→</span>
+          </KidButton>
+        )}
+
         <KidButton
           size="lg"
           variant="quiet"
-          onPress={onBack}
-          disabled={disabled}
-          aria-label="Back a line"
+          onPress={onOpenSettings}
+          aria-label="Reading settings"
         >
-          <span aria-hidden>←</span>
-          <span>Back</span>
-        </KidButton>
-
-        {children}
-
-        <KidButton
-          size="lg"
-          onPress={onNext}
-          disabled={disabled}
-          aria-label="Next line"
-        >
-          <span>Next line</span>
-          <span aria-hidden>→</span>
+          <span aria-hidden>⚙</span>
         </KidButton>
       </div>
     </div>

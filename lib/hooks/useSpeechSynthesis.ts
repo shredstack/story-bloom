@@ -29,6 +29,12 @@ const PET_VOICE_SETTINGS: Record<PetType, VoiceSettings> = {
 
 interface UseSpeechSynthesisOptions {
   petType?: PetType
+  /**
+   * Overrides the default (or pet) voice settings. Used by the reading guide,
+   * which speaks a single word slowly and in a neutral voice — a pet voice
+   * would turn a decoding aid into a character doing a bit.
+   */
+  voice?: Partial<VoiceSettings>
   onStart?: () => void
   onEnd?: () => void
   onError?: (error: string) => void
@@ -77,7 +83,10 @@ export function useSpeechSynthesis(
 
     // Apply pet-specific voice settings
     const petType = optionsRef.current.petType
-    const settings = petType ? PET_VOICE_SETTINGS[petType] : { pitch: 1.3, rate: 0.95, volume: 1 }
+    const base = petType
+      ? PET_VOICE_SETTINGS[petType]
+      : { pitch: 1.3, rate: 0.95, volume: 1 }
+    const settings = { ...base, ...optionsRef.current.voice }
 
     utterance.pitch = settings.pitch
     utterance.rate = settings.rate

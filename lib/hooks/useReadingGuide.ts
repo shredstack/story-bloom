@@ -13,6 +13,7 @@ import { tapHaptic } from '@/lib/native/haptics'
 import {
   AUTOSCROLL_DEAD_ZONE,
   COMMIT_DEBOUNCE_MS,
+  DOUBLE_TAP_MS,
   DRAG_CANCEL_PX,
   HOLD_MS,
   RESUME_DEBOUNCE_MS,
@@ -61,6 +62,11 @@ interface UseReadingGuideOptions {
   storyId: string
   /** Escape key handler — lets the child bail out of the guide. */
   onTurnOffGuide?: () => void
+  /**
+   * Double-tap on the same word. Single tap is taken by tap-to-place and
+   * long-press by hold-then-slide, so this is the only gesture left free.
+   */
+  onWordDoubleTap?: (wordIndex: number) => void
 }
 
 const RESUME_KEY_PREFIX = 'storybloom-reading-pos:'
@@ -123,6 +129,7 @@ export function useReadingGuide({
   tokens,
   storyId,
   onTurnOffGuide,
+  onWordDoubleTap,
 }: UseReadingGuideOptions): ReadingGuideApi {
   const guideOn = preferences.guideMode !== 'off'
 
@@ -160,6 +167,13 @@ export function useReadingGuide({
   // Cached per gesture and refreshed on scroll — never read per pointermove.
   const containerRectRef = useRef<DOMRect | null>(null)
   const lastHapticLineRef = useRef(-1)
+  const lastTapRef = useRef<{ wordIndex: number; time: number } | null>(null)
+  // The gutter handle is a fixed 56px square. Measured once, because reading
+  // offsetWidth after writing styles forces a synchronous layout every frame.
+  const handleSizeRef = useRef({ width: 0, height: 0 })
+
+  const doubleTapRef = useRef(onWordDoubleTap)
+  doubleTapRef.current = onWordDoubleTap
 
   // ------------------------------------------------------------ positioning
 
@@ -172,6 +186,16 @@ export function useReadingGuide({
     const prefs = prefsRef.current
     const line = currentModel.lines[pending.lineIndex]
     if (!line) return
+
+    // All layout READS happen here, before any writes below.
+    let handleSize = handleSizeRef.current
+    if (handleRef.current && handleSize.width === 0) {
+      handleSize = {
+        width: handleRef.current.offsetWidth,
+        height: handleRef.current.offsetHeight,
+      }
+      handleSizeRef.current = handleSize
+    }
 
     // Mask mode lights 1, 3 or 5 lines centred on the active one.
     let bandTop = line.top
@@ -218,9 +242,9 @@ export function useReadingGuide({
       handle.dataset.animate = pending.animate ? 'on' : 'off'
       // Sits in the gutter beside the column, clamped to the surface on a
       // narrow phone where there is no gutter to sit in.
-      handle.style.left = `${Math.max(0, currentModel.columnLeft - handle.offsetWidth - 4)}px`
+      handle.style.left = `${Math.max(0, currentModel.columnLeft - handleSize.width - 4)}px`
       handle.style.transform = `translateY(${
-        line.top + (line.bottom - line.top) / 2 - handle.offsetHeight / 2
+        line.top + (line.bottom - line.top) / 2 - handleSize.height / 2
       }px)`
       handle.style.visibility = 'visible'
     }
@@ -251,7 +275,11 @@ export function useReadingGuide({
       const line = modelRef.current.lines[lineIndex]
       if (!container || !line) return
 
-      const containerTop = container.getBoundingClientRect().top
+      // Reuse the rect cached for hit-testing rather than forcing another
+      // layout read on every move of a drag.
+      const containerTop = (
+        containerRectRef.current ?? container.getBoundingClientRect()
+      ).top
       const lineTop = containerTop + line.top
       const lineBottom = containerTop + line.bottom
       const viewportHeight = window.innerHeight
@@ -478,6 +506,23 @@ export function useReadingGuide({
       )
       if (hit.lineIndex < 0) return
       applyPosition(hit.lineIndex, hit.wordIndex, source)
+
+      if (source !== 'tap') return
+
+      // Two taps on the SAME word inside the window = "say it". The guide has
+      // already moved on the first tap, so the word does not shift underfoot.
+      const now = Date.now()
+      const last = lastTapRef.current
+      if (
+        last &&
+        last.wordIndex === hit.wordIndex &&
+        now - last.time < DOUBLE_TAP_MS
+      ) {
+        lastTapRef.current = null
+        doubleTapRef.current?.(hit.wordIndex)
+      } else {
+        lastTapRef.current = { wordIndex: hit.wordIndex, time: now }
+      }
     },
     [containerRef, applyPosition, touchOffsetPx]
   )

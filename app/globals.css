@@ -142,6 +142,31 @@ html[data-native] [contenteditable='true'] {
   transition: transform 90ms ease-out;
 }
 
+/* Pulse while the word is being spoken.
+   NOT `animate-trick-pulse`: that animates `transform: scale()`, and this
+   element's `transform` is the inline translate() that positions it — the
+   animation would yank the highlight to the top-left corner. Brightness is
+   the one channel that is free here. */
+@keyframes reading-word-speaking {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(0.86);
+  }
+}
+
+.reading-guide-word.is-speaking {
+  animation: reading-word-speaking 600ms ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-guide-word.is-speaking {
+    animation: none;
+  }
+}
+
 /* The gutter handle ("the bookmark"). A dedicated 56px target, so
    `touch-action: none` is safe here in a way it never is on the text itself. */
 .reading-gutter-handle {

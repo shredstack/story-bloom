@@ -8,15 +8,17 @@ import { useCustomIllustrations } from '@/lib/hooks/useCustomIllustrations'
 import { useReadingPreferences } from '@/lib/hooks/useReadingPreferences'
 import { useLineModel } from '@/lib/hooks/useLineModel'
 import { useReadingGuide } from '@/lib/hooks/useReadingGuide'
+import { useWordSpeech } from '@/lib/hooks/useWordSpeech'
 import { Button, Card } from '@/components/ui'
 import {
   ReadingSurface,
   ReadingBottomBar,
   ReadingGutterHandle,
   ReadingCalibration,
+  ReadingQuickPanel,
 } from '@/components/reading'
 import { flattenTokens, tokenizeStory } from '@/lib/reading/tokenize'
-import { type FontSize, type Story, type CustomIllustration } from '@/lib/types'
+import { type Story, type CustomIllustration } from '@/lib/types'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -41,6 +43,7 @@ export default function StoryReaderPage({ params }: PageProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showIllustrationPicker, setShowIllustrationPicker] = useState(false)
   const [savingIllustration, setSavingIllustration] = useState(false)
+  const [showQuickPanel, setShowQuickPanel] = useState(false)
 
   useEffect(() => {
     if (id && stories.length > 0) {
@@ -66,6 +69,11 @@ export default function StoryReaderPage({ params }: PageProps) {
     preferences,
   })
 
+  const { speakingWordIndex, sayWord } = useWordSpeech({
+    childId: selectedChild?.id,
+    enabled: preferences.tapToHearEnabled,
+  })
+
   const guide = useReadingGuide({
     containerRef: surfaceRef,
     model,
@@ -74,7 +82,20 @@ export default function StoryReaderPage({ params }: PageProps) {
     tokens,
     storyId: story?.id ?? '',
     onTurnOffGuide: () => setPreference('guideMode', 'off'),
+    onWordDoubleTap: (wordIndex) => sayWord(tokens[wordIndex]),
   })
+
+  const activeToken = guide.wordIndex >= 0 ? tokens[guide.wordIndex] : undefined
+
+  // Pulse the highlighted word while it is being spoken. Toggled on the
+  // overlay element rather than the span, so speaking never re-renders text.
+  const wordOverlayRef = guide.wordRef
+  useEffect(() => {
+    wordOverlayRef.current?.classList.toggle(
+      'is-speaking',
+      speakingWordIndex >= 0 && speakingWordIndex === guide.wordIndex
+    )
+  }, [speakingWordIndex, guide.wordIndex, wordOverlayRef])
 
   if (storiesLoading) {
     return (
@@ -151,7 +172,6 @@ export default function StoryReaderPage({ params }: PageProps) {
     setSavingIllustration(false)
   }
 
-  const fontSizes: FontSize[] = ['small', 'medium', 'large', 'extra-large']
   const customIllustration = story?.illustrations?.find(i => i.customIllustrationId)
   const generatedIllustration = story.illustrations?.find(i => !i.customIllustrationId)
 
@@ -209,32 +229,6 @@ export default function StoryReaderPage({ params }: PageProps) {
           </button>
         </div>
       </div>
-
-      {/* With the guide on, the bottom bar owns the reader's controls; this
-          card is what a guide-off reader still needs for text size. */}
-      <Card className={`mb-6 no-print ${guideOn ? 'hidden' : ''}`}>
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-medium text-gray-500">Font Size</span>
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            {fontSizes.map(size => (
-              <button
-                key={size}
-                onClick={() => setPreference('fontSize', size)}
-                className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                  preferences.fontSize === size
-                    ? 'bg-white text-primary-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                {size === 'small' && 'A'}
-                {size === 'medium' && 'A+'}
-                {size === 'large' && 'A++'}
-                {size === 'extra-large' && 'A+++'}
-              </button>
-            ))}
-          </div>
-        </div>
-      </Card>
 
       <article className="bg-white rounded-2xl shadow-lg p-8 md:p-12">
         <header className="mb-8 text-center">
@@ -368,11 +362,24 @@ export default function StoryReaderPage({ params }: PageProps) {
         </footer>
       </article>
 
-      {guideOn && (
-        <ReadingBottomBar
-          onBack={guide.previousLine}
-          onNext={guide.nextLine}
-          disabled={!guide.isReady}
+      <ReadingBottomBar
+        guideOn={guideOn}
+        onBack={guide.previousLine}
+        onNext={guide.nextLine}
+        onSay={() => sayWord(activeToken)}
+        onOpenSettings={() => setShowQuickPanel(true)}
+        disabled={!guide.isReady}
+        canSay={
+          preferences.tapToHearEnabled && !!activeToken?.normalized
+        }
+        speaking={speakingWordIndex >= 0}
+      />
+
+      {showQuickPanel && (
+        <ReadingQuickPanel
+          value={preferences}
+          onChange={setPreferences}
+          onClose={() => setShowQuickPanel(false)}
         />
       )}
 
