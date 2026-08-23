@@ -15,7 +15,9 @@ import {
   COMMIT_DEBOUNCE_MS,
   DOUBLE_TAP_MS,
   DRAG_CANCEL_PX,
+  DRAG_START_PX,
   HOLD_MS,
+  HORIZONTAL_INTENT_RATIO,
   RESUME_DEBOUNCE_MS,
 } from '@/lib/reading/defaults'
 import { clampLineIndex, findNearestLine, hitTest } from '@/lib/reading/hitTest'
@@ -43,8 +45,12 @@ export interface ReadingGuideApi {
   surfaceHandlers: Record<string, unknown>
   moveToWord: (wordIndex: number, source?: MoveSource) => void
   moveToLine: (lineIndex: number, source?: MoveSource) => void
+  /** Gutter handle: records where on the puck she grabbed, so it does not jump. */
+  startHandleDrag: (clientY: number) => void
   /** Used by the gutter handle: line only, and never touch-offset. */
   moveToLineAtClientY: (clientY: number) => void
+  /** Gutter handle: releases the cached rect and the grab offset. */
+  endHandleDrag: () => void
   nextLine: () => void
   previousLine: () => void
   /** Announced to screen readers on keyboard moves only. */
@@ -168,9 +174,17 @@ export function useReadingGuide({
   const containerRectRef = useRef<DOMRect | null>(null)
   const lastHapticLineRef = useRef(-1)
   const lastTapRef = useRef<{ wordIndex: number; time: number } | null>(null)
-  // The gutter handle is a fixed 56px square. Measured once, because reading
-  // offsetWidth after writing styles forces a synchronous layout every frame.
+  // The gutter handle's size comes from CSS (and changes at the 420px
+  // breakpoint). Cached rather than read per frame, because reading offsetWidth
+  // after writing styles forces a synchronous layout every frame; invalidated
+  // whenever the model rebuilds, which is exactly when the breakpoint can have
+  // flipped.
   const handleSizeRef = useRef({ width: 0, height: 0 })
+  // A handle drag is its own gesture, separate from the surface state machine.
+  const handleDragRef = useRef(false)
+  // Where on the puck she grabbed, so the guide does not jump a line when she
+  // takes hold of it near an edge.
+  const handleGrabOffsetRef = useRef(0)
 
   const doubleTapRef = useRef(onWordDoubleTap)
   doubleTapRef.current = onWordDoubleTap
@@ -240,8 +254,13 @@ export function useReadingGuide({
     const handle = handleRef.current
     if (handle) {
       handle.dataset.animate = pending.animate ? 'on' : 'off'
-      // Sits in the gutter beside the column, clamped to the surface on a
-      // narrow phone where there is no gutter to sit in.
+      // Sits in the rail reserved by `.reading-surface[data-guide='on']`'s
+      // padding-left. That reservation is what keeps the puck OFF the text:
+      // without it this clamped to 0 and painted over the first word of the
+      // line — covering the very word she was trying to read.
+      // The rail is `--rg-gutter` wide and the puck is `--rg-handle-size`, with
+      // the gutter the larger of the two, so this stays positive; the clamp is
+      // defence against those two vars drifting apart.
       handle.style.left = `${Math.max(0, currentModel.columnLeft - handleSize.width - 4)}px`
       handle.style.transform = `translateY(${
         line.top + (line.bottom - line.top) / 2 - handleSize.height / 2
@@ -291,9 +310,13 @@ export function useReadingGuide({
       const delta = (lineTop + lineBottom) / 2 - viewportHeight / 2
       if (Math.abs(delta) < 1) return
 
+      // Instant while a finger is down. Smooth scrolling fights the finger and
+      // feels like the page is sliding away from underneath her — true of the
+      // gutter handle just as much as of a slide on the text.
+      const fingerDown = source === 'drag' || source === 'handle'
       window.scrollBy({
         top: delta,
-        behavior: source === 'drag' || prefersReducedMotion() ? 'auto' : 'smooth',
+        behavior: fingerDown || prefersReducedMotion() ? 'auto' : 'smooth',
       })
 
       // The cached rect just went stale by exactly `delta`. Correct it rather
@@ -319,9 +342,11 @@ export function useReadingGuide({
       const previousLineIndex = positionRef.current.lineIndex
       positionRef.current = { lineIndex, wordIndex }
 
-      // No transition during an active drag: a band lagging under a moving
-      // finger feels broken.
-      const animate = source !== 'drag' && source !== 'restore'
+      // No transition while a finger is down: a band — or a puck — lagging
+      // 90ms behind a moving finger is exactly what "doesn't drag well" feels
+      // like. Taps, buttons and keys still animate, where the transition reads
+      // as the guide travelling to its new home.
+      const animate = source === 'tap' || source === 'button' || source === 'key'
       scheduleFlush(lineIndex, wordIndex, animate)
 
       if (
@@ -380,6 +405,30 @@ export function useReadingGuide({
     moveToLine(current < 0 ? 0 : current - 1)
   }, [moveToLine])
 
+  /**
+   * Grabbing the puck. Records the distance between her fingertip and the
+   * centre of the line the puck is already on, so taking hold of it near an
+   * edge does not immediately snap the guide to a different line — the puck
+   * has to feel like an object she is holding, not a thing that jumps.
+   */
+  const startHandleDrag = useCallback(
+    (clientY: number) => {
+      const container = containerRef.current
+      const line = modelRef.current.lines[positionRef.current.lineIndex]
+      handleDragRef.current = true
+      handleGrabOffsetRef.current = 0
+      if (!container) return
+
+      const rect = container.getBoundingClientRect()
+      containerRectRef.current = rect
+      if (line) {
+        handleGrabOffsetRef.current = clientY - (rect.top + (line.top + line.bottom) / 2)
+      }
+      lastHapticLineRef.current = positionRef.current.lineIndex
+    },
+    [containerRef]
+  )
+
   /** The gutter handle drags by LINE and never applies the touch offset. */
   const moveToLineAtClientY = useCallback(
     (clientY: number) => {
@@ -387,11 +436,20 @@ export function useReadingGuide({
       const currentModel = modelRef.current
       if (!container || currentModel.lines.length === 0) return
       const rect = containerRectRef.current ?? container.getBoundingClientRect()
-      const line = findNearestLine(currentModel, clientY - rect.top)
+      const line = findNearestLine(
+        currentModel,
+        clientY - handleGrabOffsetRef.current - rect.top
+      )
       applyPosition(line.index, line.firstWordIndex, 'handle')
     },
     [containerRef, applyPosition]
   )
+
+  const endHandleDrag = useCallback(() => {
+    handleDragRef.current = false
+    handleGrabOffsetRef.current = 0
+    containerRectRef.current = null
+  }, [])
 
   // ------------------------------------------------- model change / restore
 
@@ -402,6 +460,13 @@ export function useReadingGuide({
     setCommitted({ lineIndex: -1, wordIndex: -1 })
     restoredForRef.current = null
   }, [storyId])
+
+  // The puck's size comes from CSS and shrinks at the 420px breakpoint. The
+  // model rebuilds on exactly that resize, so this is the moment to drop the
+  // cached size — a stale one would park the puck back over the text.
+  useEffect(() => {
+    handleSizeRef.current = { width: 0, height: 0 }
+  }, [model])
 
   // Re-anchor on the same WORD when the model rebuilds (font size change,
   // rotation, column change). This is the whole reason the position is stored
@@ -478,14 +543,21 @@ export function useReadingGuide({
   // ------------------------------------------------------------- pointer
 
   /**
-   * The finger occludes what it touches, so the hit-test point sits ABOVE the
-   * fingertip: she rides her finger under the line, exactly as she would with
-   * a bookmark on paper.
+   * The finger occludes what it touches, so during a SLIDE the hit-test point
+   * sits above the fingertip: she rides her finger under the line, exactly as
+   * she would with a bookmark on paper.
    *
-   * Mouse and trackpad get offset 0 — there is nothing to occlude, and an
-   * offset cursor just feels broken.
+   * A tap is different and gets no offset. Her finger has already lifted before
+   * she looks at the result, so there is nothing to occlude — and "I tapped
+   * this word and it highlighted the line above" is the single most confusing
+   * thing the guide can do. It also keeps double-tap-to-hear honest: it speaks
+   * the word she actually touched.
+   *
+   * Mouse and trackpad get offset 0 always — nothing to occlude, and an offset
+   * cursor just feels broken.
    */
-  const touchOffsetPx = useCallback(() => {
+  const touchOffsetPx = useCallback((source: MoveSource) => {
+    if (source !== 'drag') return 0
     if (!isTouchLikeRef.current) return 0
     return prefsRef.current.touchOffsetLines * modelRef.current.lineHeightPx
   }, [])
@@ -502,7 +574,7 @@ export function useReadingGuide({
       const hit = hitTest(
         modelRef.current,
         clientX - rect.left,
-        clientY - rect.top - touchOffsetPx()
+        clientY - rect.top - touchOffsetPx(source)
       )
       if (hit.lineIndex < 0) return
       applyPosition(hit.lineIndex, hit.wordIndex, source)
@@ -588,9 +660,26 @@ export function useReadingGuide({
       if (phaseRef.current === 'pending') {
         const start = pointerStartRef.current
         if (!start) return
-        const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y)
-        if (moved > DRAG_CANCEL_PX) {
-          // She is scrolling. Stand down completely and let the browser do it.
+        const dx = e.clientX - start.x
+        const dy = e.clientY - start.y
+
+        // Sliding ALONG a line is the finger-tracking motion this feature
+        // exists for, and it can never be a scroll — the page only scrolls
+        // vertically. So take it straight away rather than making her hold
+        // still for 180ms before she is allowed to track.
+        if (
+          Math.abs(dx) > DRAG_START_PX &&
+          Math.abs(dx) > Math.abs(dy) * HORIZONTAL_INTENT_RATIO
+        ) {
+          if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
+          holdTimerRef.current = null
+          beginDrag()
+          return
+        }
+
+        if (Math.hypot(dx, dy) > DRAG_CANCEL_PX) {
+          // Mostly vertical: she is scrolling. Stand down completely and let
+          // the browser do it.
           if (holdTimerRef.current) clearTimeout(holdTimerRef.current)
           holdTimerRef.current = null
           phaseRef.current = 'released'
@@ -602,7 +691,7 @@ export function useReadingGuide({
         placeFromPoint(e.clientX, e.clientY, 'drag')
       }
     },
-    [placeFromPoint]
+    [placeFromPoint, beginDrag]
   )
 
   const resetPointer = useCallback(() => {
@@ -663,7 +752,7 @@ export function useReadingGuide({
       }
     }
     const refreshRect = () => {
-      if (phaseRef.current === 'dragging') {
+      if (phaseRef.current === 'dragging' || handleDragRef.current) {
         containerRectRef.current = container.getBoundingClientRect()
       }
     }
@@ -767,7 +856,9 @@ export function useReadingGuide({
     surfaceHandlers,
     moveToWord,
     moveToLine,
+    startHandleDrag,
     moveToLineAtClientY,
+    endHandleDrag,
     nextLine,
     previousLine,
     liveMessage,

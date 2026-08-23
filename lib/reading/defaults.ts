@@ -138,8 +138,25 @@ export const MAX_TOUCH_OFFSET_LINES = 1.5
 
 /** Hold this long before a drag starts. Below it, the browser scrolls. */
 export const HOLD_MS = 180
-/** Moving further than this before HOLD_MS cancels the hold → normal scroll. */
-export const DRAG_CANCEL_PX = 10
+/**
+ * Moving further than this before HOLD_MS cancels the hold → normal scroll.
+ *
+ * Deliberately looser than a pixel-precise threshold: a 7-year-old's finger
+ * drifts while she is holding still, and losing the guide to an accidental
+ * scroll is the failure that makes the feature feel broken. A real scroll
+ * flick travels far more than this inside 180ms.
+ */
+export const DRAG_CANCEL_PX = 14
+/**
+ * Horizontal travel that starts a drag IMMEDIATELY, with no hold.
+ *
+ * Sliding along a line is the natural finger-tracking motion and it can never
+ * be a scroll — the page only scrolls vertically. Requiring her to hold still
+ * first before she is allowed to track is the wrong trade.
+ */
+export const DRAG_START_PX = 12
+/** Horizontal travel must beat vertical by this factor to read as tracking. */
+export const HORIZONTAL_INTENT_RATIO = 1.2
 /** Two taps on the same word within this window = "say it". */
 export const DOUBLE_TAP_MS = 300
 /** Auto-scroll when the active line enters the top/bottom this fraction of the viewport. */
