@@ -59,6 +59,11 @@ html[data-native] [contenteditable='true'] {
   --rg-band-color: #fff1a8;
   --rg-word-color: #ffd84d;
   --rg-mask-alpha: 0.35;
+  /* The bookmark rail. The gutter handle is positioned inside this reserved
+     strip so it can NEVER sit on top of a word — without reserved space the
+     puck clamps to the surface edge and covers the first word of the line. */
+  --rg-handle-size: 48px;
+  --rg-gutter: 58px;
 
   position: relative;
   background: var(--rg-page-tint);
@@ -104,6 +109,18 @@ html[data-native] [contenteditable='true'] {
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
+  /* Reserve the rail only when the handle exists. Higher specificity than the
+     px-4/md:px-6 utility the story reader passes in, deliberately. */
+  padding-left: var(--rg-gutter);
+}
+
+/* On a phone there is no spare width to give away, so the rail (and the puck
+   in it) gets narrower rather than eating the column. */
+@media (max-width: 420px) {
+  .reading-surface {
+    --rg-handle-size: 40px;
+    --rg-gutter: 46px;
+  }
 }
 
 /* Applied for the duration of a hold-then-slide drag ONLY. Never static: a
@@ -167,8 +184,9 @@ html[data-native] [contenteditable='true'] {
   }
 }
 
-/* The gutter handle ("the bookmark"). A dedicated 56px target, so
-   `touch-action: none` is safe here in a way it never is on the text itself. */
+/* The gutter handle ("the bookmark"). A dedicated target inside the reserved
+   rail, so `touch-action: none` is safe here in a way it never is on the text
+   itself. Its width tracks the rail so it cannot spill onto the column. */
 .reading-gutter-handle {
   position: absolute;
   top: 0;
@@ -177,8 +195,8 @@ html[data-native] [contenteditable='true'] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: var(--rg-handle-size);
+  height: 60px;
   cursor: grab;
   touch-action: none;
   will-change: transform;
@@ -190,16 +208,46 @@ html[data-native] [contenteditable='true'] {
 }
 
 .reading-gutter-handle__grip {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px 4px 4px 12px; /* bookmark tab */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 48px;
+  border-radius: 14px 6px 6px 14px; /* bookmark tab */
   background: var(--rg-word-color);
   border: 2px solid rgba(31, 41, 55, 0.18);
   box-shadow: 0 2px 6px rgba(31, 41, 55, 0.18);
+  /* Grow under the finger instead of moving — the element's own transform is
+     the inline translate() that positions it, so scale it on the grip only. */
+  transition: transform 120ms ease-out;
+}
+
+/* Two bars: the universal "you can drag this" affordance, which the flat puck
+   did not have. */
+.reading-gutter-handle__grip::before,
+.reading-gutter-handle__grip::after {
+  content: '';
+  width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(31, 41, 55, 0.3);
+}
+
+.reading-gutter-handle[data-grabbed='on'] .reading-gutter-handle__grip {
+  transform: scale(1.12);
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.28);
 }
 
 .reading-gutter-handle[data-animate='on'] {
   transition: transform 90ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reading-gutter-handle__grip {
+    transition: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

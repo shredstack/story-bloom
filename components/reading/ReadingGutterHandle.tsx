@@ -19,6 +19,11 @@ interface ReadingGutterHandleProps {
  * It moves by LINE and resets to the first word of that line, and it does NOT
  * apply the touch offset — she is dragging an object she can see, not reading
  * under her own fingertip.
+ *
+ * The rail it lives in is reserved by `.reading-surface[data-guide='on']`'s
+ * padding-left. That is load-bearing, not decoration: without a reserved rail
+ * the puck clamps to the surface edge and paints over the first word of the
+ * line, hiding the exact word she is trying to read.
  */
 export function ReadingGutterHandle({ guide }: ReadingGutterHandleProps) {
   const draggingPointerRef = useRef<number | null>(null)
@@ -31,7 +36,10 @@ export function ReadingGutterHandle({ guide }: ReadingGutterHandleProps) {
       e.preventDefault()
       draggingPointerRef.current = e.pointerId
       e.currentTarget.setPointerCapture(e.pointerId)
-      guide.moveToLineAtClientY(e.clientY)
+      e.currentTarget.dataset.grabbed = 'on'
+      // Record the grab point but do NOT move: taking hold of the puck should
+      // never itself shift her place in the story.
+      guide.startHandleDrag(e.clientY)
     },
     [guide]
   )
@@ -45,14 +53,20 @@ export function ReadingGutterHandle({ guide }: ReadingGutterHandleProps) {
     [guide]
   )
 
-  const endDrag = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (e.pointerId !== draggingPointerRef.current) return
-    e.stopPropagation()
-    draggingPointerRef.current = null
-    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId)
-    }
-  }, [])
+  const endDrag = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.pointerId !== draggingPointerRef.current) return
+      e.stopPropagation()
+      draggingPointerRef.current = null
+      e.currentTarget.dataset.grabbed = 'off'
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      }
+      guide.endHandleDrag()
+      // The guide STICKS where she left it — nothing is cleared here.
+    },
+    [guide]
+  )
 
   return (
     <div
@@ -69,8 +83,10 @@ export function ReadingGutterHandle({ guide }: ReadingGutterHandleProps) {
       // of the bottom bar's Back/Next controls, which are the accessible path.
       aria-hidden="true"
     >
-      {/* Hit-slop: the visible puck is 44px, the target is a comfortable 56+. */}
-      <span aria-hidden className="absolute -inset-2" />
+      {/* Hit-slop. Vertical only, plus leftward into the page margin: it must
+          NOT extend right, or it would swallow taps meant for the first word
+          of the line. Vertical is the axis that matters for a vertical drag. */}
+      <span aria-hidden className="absolute -top-3 -bottom-3 -left-3 right-0" />
       <span aria-hidden className="reading-gutter-handle__grip" />
     </div>
   )
