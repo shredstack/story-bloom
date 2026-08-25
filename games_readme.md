@@ -65,6 +65,13 @@ StoryBloom has several interactive games designed to help children practice read
 - **Accuracy calculation:** Word-level matching with alignment algorithm
 - **Sentence "correct" threshold:** 50% word accuracy
 - **XP system:** Base 5 XP per sentence + accuracy bonuses + completion bonus
+- **Reading guide:** the sentence renders through the same `ReadingSurface` as the
+  story reader, so the child's highlighter, typography and tap-to-hear all carry
+  over — finger-tracking, the gutter "bookmark" handle, and the ⚙ quick panel in
+  the header. Two game-specific rules: the position never resumes (each sentence
+  starts at its first word, and the page never auto-scrolls), and **tap-to-hear is
+  disabled while the mic is live**, or the spoken word would land in the
+  transcript. See `claude_instruction_docs/reading_guide_spec.md` §11b.
 
 ### XP Rewards
 
@@ -88,6 +95,7 @@ Completion bonus:     15 XP (all sentences practiced)
 
 - Practice UI: `app/(protected)/games/sentence-shenanigans/materials/[materialId]/practice/page.tsx`
 - Hook: `lib/hooks/useSentenceShenanigans.ts`
+- Reading guide wiring: `lib/hooks/useGuidedReading.ts` (shared with the story reader)
 - Components: `app/(protected)/games/sentence-shenanigans/components/`
 - API: `app/api/sentence-shenanigans/`
 

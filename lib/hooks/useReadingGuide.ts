@@ -64,8 +64,20 @@ interface UseReadingGuideOptions {
   preferences: ReadingPreferences
   /** Flattened tokens, for the aria-live line announcement. */
   tokens: WordToken[]
-  /** Namespaces the resume position. */
+  /** Namespaces the resume position. Changing it resets the guide. */
   storyId: string
+  /**
+   * Remember where she stopped and restore it next time. True for a story,
+   * which she comes back to; false for a game card, where every passage is
+   * new and should always start at the first word.
+   */
+  persistPosition?: boolean
+  /**
+   * Scroll to keep the active line out of the viewport edges. Right for a
+   * full-page story; wrong inside a game screen, where the passage is a few
+   * lines in a fixed layout and scrolling would drag the controls off-screen.
+   */
+  autoScroll?: boolean
   /** Escape key handler — lets the child bail out of the guide. */
   onTurnOffGuide?: () => void
   /**
@@ -134,6 +146,8 @@ export function useReadingGuide({
   preferences,
   tokens,
   storyId,
+  persistPosition = true,
+  autoScroll: autoScrollEnabled = true,
   onTurnOffGuide,
   onWordDoubleTap,
 }: UseReadingGuideOptions): ReadingGuideApi {
@@ -359,7 +373,7 @@ export function useReadingGuide({
         tapHaptic()
       }
 
-      if (source !== 'restore') autoScroll(lineIndex, source)
+      if (source !== 'restore' && autoScrollEnabled) autoScroll(lineIndex, source)
 
       if (commitTimerRef.current) clearTimeout(commitTimerRef.current)
       commitTimerRef.current = setTimeout(() => {
@@ -371,7 +385,7 @@ export function useReadingGuide({
         )
       }, COMMIT_DEBOUNCE_MS)
     },
-    [scheduleFlush, autoScroll]
+    [scheduleFlush, autoScroll, autoScrollEnabled]
   )
 
   const moveToWord = useCallback(
@@ -488,7 +502,7 @@ export function useReadingGuide({
     if (restoredForRef.current === storyId) return
     restoredForRef.current = storyId
 
-    const resumed = readResume(storyId)
+    const resumed = persistPosition ? readResume(storyId) : null
     const target =
       resumed !== null && model.wordToLine.has(resumed)
         ? resumed
@@ -498,7 +512,7 @@ export function useReadingGuide({
       const lineIndex = model.wordToLine.get(target)
       if (lineIndex !== undefined) applyPosition(lineIndex, target, 'restore')
     }
-  }, [guideOn, isReady, model, storyId, applyPosition, scheduleFlush])
+  }, [guideOn, isReady, model, storyId, persistPosition, applyPosition, scheduleFlush])
 
   // Re-flush when the guide mode or mask line count changes, so the band
   // resizes without waiting for the next move.
@@ -509,7 +523,7 @@ export function useReadingGuide({
 
   // Persist the resume position.
   useEffect(() => {
-    if (!guideOn || committed.wordIndex < 0) return
+    if (!persistPosition || !guideOn || committed.wordIndex < 0) return
     if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current)
     resumeTimerRef.current = setTimeout(() => {
       try {
@@ -521,7 +535,7 @@ export function useReadingGuide({
         // Private mode / quota. Losing the resume position is survivable.
       }
     }, RESUME_DEBOUNCE_MS)
-  }, [guideOn, committed.wordIndex, storyId])
+  }, [persistPosition, guideOn, committed.wordIndex, storyId])
 
   // Hide the overlay when there is nothing to point at.
   useEffect(() => {

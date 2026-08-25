@@ -6,7 +6,7 @@ import { useChild, useAuth } from '../../ProtectedLayoutClient'
 import { uploadProfileImage, deleteProfileImage } from '@/lib/hooks/useProfileImage'
 import { Button, Input, Select, TextArea, TagInput, Card } from '@/components/ui'
 import { PhysicalCharacteristicsForm, type PhysicalCharacteristicsData } from '@/components/ui/PhysicalCharacteristicsForm'
-import { ReadingSettingsPanel } from '@/components/reading'
+import { HighlightColorPicker, ReadingSettingsPanel } from '@/components/reading'
 import { resolveReadingPreferences } from '@/lib/reading/defaults'
 import type { PartialReadingPreferences } from '@/lib/reading/types'
 import {
@@ -200,6 +200,14 @@ export default function ParentProfilesPage() {
 
   const isEditing = editingChild || isCreating
 
+  // The sparse `readingPrefs` merged over this child's level defaults. Shared
+  // by the promoted highlighter picker and the full settings panel so the two
+  // controls always show the same value.
+  const resolvedReadingPrefs = resolveReadingPreferences(readingPrefs, {
+    readingLevel,
+    fallbackFontSize: defaultTextSize,
+  })
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-8">
@@ -265,6 +273,17 @@ export default function ParentProfilesPage() {
                 { value: 'large', label: 'Large (A++)' },
                 { value: 'extra-large', label: 'Extra Large (A+++)' },
               ]}
+            />
+
+            {/* Promoted out of "Reading & Text" below: this is the one reading
+                setting a child changes on her own, so a parent needs to find it
+                without opening an accordion. */}
+            <HighlightColorPicker
+              value={resolvedReadingPrefs.highlightPreset}
+              onChange={(highlightPreset) =>
+                setReadingPrefs((prev) => ({ ...prev, highlightPreset }))
+              }
+              childName={name.trim() || undefined}
             />
 
             <TagInput
@@ -341,10 +360,9 @@ export default function ParentProfilesPage() {
                 <div className="mt-4">
                   <ReadingSettingsPanel
                     childName={name.trim() || undefined}
-                    value={resolveReadingPreferences(readingPrefs, {
-                      readingLevel,
-                      fallbackFontSize: defaultTextSize,
-                    })}
+                    // Shown above, next to text size.
+                    showHighlightColor={false}
+                    value={resolvedReadingPrefs}
                     onChange={(patch) =>
                       setReadingPrefs((prev) => ({ ...prev, ...patch }))
                     }
