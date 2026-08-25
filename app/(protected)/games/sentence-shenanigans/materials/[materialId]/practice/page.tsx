@@ -10,8 +10,10 @@ import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
 import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { useSentenceShenanigans } from '@/lib/hooks/useSentenceShenanigans'
 import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
+import { useGuidedReading } from '@/lib/hooks/useGuidedReading'
 import { usePets } from '@/lib/hooks/usePets'
 import { Button, Card } from '@/components/ui'
+import { ReadingQuickPanel } from '@/components/reading'
 import {
   SpeechButton,
   ProgressBar,
@@ -43,6 +45,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
   const [isFirstPet, setIsFirstPet] = useState(false)
   const [earnedPetReward, setEarnedPetReward] = useState(false)
   const [rewardPetType, setRewardPetType] = useState<PetType>('cat')
+  const [showReadingPanel, setShowReadingPanel] = useState(false)
 
   const {
     sentences,
@@ -125,6 +128,36 @@ export default function PracticeSessionPage({ params }: PageProps) {
     continuous: true,           // Enable continuous mode for slow readers
     interimResults: true,       // Show words as they're spoken
     onResult: handleSpeechResult,
+  })
+
+  // --- Reading guide -------------------------------------------------------
+  // The same finger-controlled highlighter as the story reader, on the
+  // sentence she is about to read aloud. Two differences from the reader, both
+  // deliberate: the position never resumes (every sentence starts at its first
+  // word) and the page never auto-scrolls (the mic button and "Done Reading"
+  // must stay where she left them).
+  const {
+    surfaceRef,
+    preferences,
+    setPreferences,
+    guideOn,
+    guide,
+    paragraphs,
+    sayActiveWord,
+    canSay,
+    speakingWordIndex,
+    speechError: sayWordError,
+  } = useGuidedReading({
+    childId: selectedChild?.id,
+    readingLevel: selectedChild?.reading_level,
+    fallbackFontSize: selectedChild?.default_text_size,
+    content: currentSentence?.sentence_text ?? '',
+    contentId: currentSentence?.id ?? '',
+    // Speaking a word out loud while the mic is live would be transcribed as
+    // her reading it.
+    speechEnabled: status !== 'listening',
+    persistPosition: false,
+    autoScroll: false,
   })
 
   // Start session on mount
@@ -292,7 +325,16 @@ export default function PracticeSessionPage({ params }: PageProps) {
           <div className="font-medium">{currentMaterial?.name || 'Practice'}</div>
           <div className="text-xs">{selectedChild.name}</div>
         </div>
-        <div className="w-16" />
+        {/* Same kid-safe panel as the story reader: helper on/off, highlight
+            style, color, text size. */}
+        <KidButton
+          size="md"
+          variant="quiet"
+          onPress={() => setShowReadingPanel(true)}
+          aria-label="Reading settings"
+        >
+          <span aria-hidden>⚙</span>
+        </KidButton>
       </div>
 
       {/* Progress Bar */}
@@ -313,7 +355,15 @@ export default function PracticeSessionPage({ params }: PageProps) {
             lastResult={lastResult}
             wordResults={lastWordResults}
             accuracy={lastAccuracy}
+            preferences={preferences}
+            guide={guide}
+            surfaceRef={surfaceRef}
+            paragraphs={paragraphs}
           />
+          {/* Keyboard-only line announcements, as in the story reader. */}
+          <div aria-live="polite" className="sr-only">
+            {guide.liveMessage}
+          </div>
         </div>
       )}
 
@@ -387,8 +437,33 @@ export default function PracticeSessionPage({ params }: PageProps) {
                 : 'Tap the microphone and read the sentence aloud'}
         </p>
 
+        {/* The guide is only useful if she knows it moves. Shown once per
+            sentence, before she starts reading, and never over the feedback. */}
+        {guideOn && guide.isReady && status !== 'listening' && lastResult === null && (
+          <p className="text-gray-400 text-xs text-center max-w-xs -mt-4">
+            Slide your finger under the words to keep your place
+          </p>
+        )}
+
         {/* Big, obvious escape hatch (§B5). */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          {/* The discoverable half of tap-to-hear — double-tapping a word is
+              the shortcut for a child who has found it. Off while the mic is
+              live, so the spoken word never lands in the transcript. */}
+          <KidButton
+            variant="secondary"
+            size="lg"
+            onPress={sayActiveWord}
+            disabled={!canSay}
+            aria-label="Say the highlighted word"
+            className={speakingWordIndex >= 0 ? 'animate-trick-pulse' : ''}
+          >
+            <span aria-hidden>🔊</span>
+            <span>Say it</span>
+          </KidButton>
+          {sayWordError && (
+            <p className="w-full text-center text-sm text-amber-600">{sayWordError}</p>
+          )}
           <KidButton
             variant="secondary"
             size="lg"
@@ -403,6 +478,14 @@ export default function PracticeSessionPage({ params }: PageProps) {
           </KidButton>
         </div>
       </div>
+
+      {showReadingPanel && (
+        <ReadingQuickPanel
+          value={preferences}
+          onChange={setPreferences}
+          onClose={() => setShowReadingPanel(false)}
+        />
+      )}
 
       {/* Success Animation */}
       <SuccessAnimation

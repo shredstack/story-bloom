@@ -20,6 +20,15 @@ interface ReadingSurfaceProps {
   surfaceRef?: React.RefObject<HTMLDivElement>
   /** Omit for a plain, fully selectable reading surface. */
   guide?: ReadingGuideApi | null
+  /**
+   * Extra classes for one word, by global token index — Sentence Shenanigans
+   * colors the words she missed.
+   *
+   * Must only ever change COLOR. Anything that changes layout (display,
+   * margin, padding, font-size) silently invalidates the measured line model,
+   * because a class change alone does not trigger a re-measure.
+   */
+  wordClassName?: (wordIndex: number) => string | undefined
   /** Rendered inside the surface, after the text (e.g. the gutter handle). */
   children?: ReactNode
 }
@@ -38,6 +47,7 @@ export function ReadingSurface({
   className = '',
   surfaceRef,
   guide = null,
+  wordClassName,
   children,
 }: ReadingSurfaceProps) {
   const resolved = useMemo(
@@ -70,7 +80,10 @@ export function ReadingSurface({
               {/* No onClick here: all pointer handling is delegated on the
                   container, and per-word listeners on 800 spans would be
                   wasteful. The span exists to be measured. */}
-              <span data-word-index={token.index} className="reading-word">
+              <span
+                data-word-index={token.index}
+                className={`reading-word ${wordClassName?.(token.index) ?? ''}`}
+              >
                 {token.raw}
               </span>
               {/* The separating space must be an explicit string OUTSIDE the

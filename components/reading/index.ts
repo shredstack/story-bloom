@@ -1,5 +1,6 @@
 export { ReadingSurface } from './ReadingSurface'
 export { ReadingSettingsPanel } from './ReadingSettingsPanel'
+export { HighlightColorPicker } from './HighlightColorPicker'
 export { ReadingFontLoader } from './ReadingFontLoader'
 export { ReadingGuideOverlay } from './ReadingGuideOverlay'
 export { ReadingBottomBar } from './ReadingBottomBar'

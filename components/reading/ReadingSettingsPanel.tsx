@@ -1,14 +1,9 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import {
-  HIGHLIGHT_PRESETS,
-  PAGE_TINT,
-  TOUCH_OFFSET_CHOICES,
-} from '@/lib/reading/defaults'
+import { PAGE_TINT, TOUCH_OFFSET_CHOICES } from '@/lib/reading/defaults'
 import type {
   ColumnWidth,
-  HighlightPreset,
   LineHeightStep,
   MaskLines,
   MaskStrength,
@@ -21,6 +16,7 @@ import type {
   SpacingStep,
 } from '@/lib/reading/types'
 import type { FontSize } from '@/lib/types'
+import { HighlightColorPicker } from './HighlightColorPicker'
 import { ReadingSurface } from './ReadingSurface'
 
 const PREVIEW_TEXT =
@@ -35,6 +31,12 @@ interface ReadingSettingsPanelProps {
   /** Re-run the first-run touch-offset calibration. */
   onRecalibrate?: () => void
   childName?: string
+  /**
+   * False when the surrounding form already shows the highlighter color at a
+   * more prominent spot — the child profile promotes it out of this panel so a
+   * parent doesn't have to open an accordion to find it.
+   */
+  showHighlightColor?: boolean
 }
 
 // ---------------------------------------------------------------- primitives
@@ -232,14 +234,6 @@ const TINT_LABELS: Record<PageTint, string> = {
   peach: 'Peach',
 }
 
-const PRESET_LABELS: Record<HighlightPreset, string> = {
-  butter: 'Butter',
-  mint: 'Mint',
-  peach: 'Peach',
-  sky: 'Sky',
-  lavender: 'Lavender',
-}
-
 // --------------------------------------------------------------------- panel
 
 /**
@@ -257,6 +251,7 @@ export function ReadingSettingsPanel({
   onReset,
   onRecalibrate,
   childName,
+  showHighlightColor = true,
 }: ReadingSettingsPanelProps) {
   const guideOn = value.guideMode !== 'off'
 
@@ -314,24 +309,13 @@ export function ReadingSettingsPanel({
           </>
         )}
 
-        <Field label="Highlight color" hint="Pick a favorite.">
-          <SwatchRow
-            swatches={(Object.keys(HIGHLIGHT_PRESETS) as HighlightPreset[]).map(
-              (preset) => ({
-                value: preset,
-                label: PRESET_LABELS[preset],
-                colors: [
-                  HIGHLIGHT_PRESETS[preset].band,
-                  HIGHLIGHT_PRESETS[preset].word,
-                ],
-              })
-            )}
+        {showHighlightColor && (
+          <HighlightColorPicker
             value={value.highlightPreset}
-            onSelect={(preset) =>
-              onChange({ highlightPreset: preset as HighlightPreset })
-            }
+            onChange={(highlightPreset) => onChange({ highlightPreset })}
+            childName={childName}
           />
-        </Field>
+        )}
 
         {guideOn && (
           <Field

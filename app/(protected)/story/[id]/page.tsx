@@ -1,14 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, use } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth, useChild } from '../../ProtectedLayoutClient'
 import { useStories } from '@/lib/hooks/useStories'
 import { useCustomIllustrations } from '@/lib/hooks/useCustomIllustrations'
-import { useReadingPreferences } from '@/lib/hooks/useReadingPreferences'
-import { useLineModel } from '@/lib/hooks/useLineModel'
-import { useReadingGuide } from '@/lib/hooks/useReadingGuide'
-import { useWordSpeech } from '@/lib/hooks/useWordSpeech'
+import { useGuidedReading } from '@/lib/hooks/useGuidedReading'
 import { Button, Card } from '@/components/ui'
 import {
   ReadingSurface,
@@ -17,7 +14,6 @@ import {
   ReadingCalibration,
   ReadingQuickPanel,
 } from '@/components/reading'
-import { flattenTokens, tokenizeStory } from '@/lib/reading/tokenize'
 import { type Story, type CustomIllustration } from '@/lib/types'
 
 interface PageProps {
@@ -31,13 +27,6 @@ export default function StoryReaderPage({ params }: PageProps) {
   const { selectedChild } = useChild()
   const { stories, loading: storiesLoading, toggleFavorite, deleteStory, updateStoryIllustrations } = useStories(selectedChild?.id)
   const { illustrations: customIllustrations } = useCustomIllustrations(user?.id)
-  // Per-child typography + reading guide. `default_text_size` remains the
-  // fallback so profiles that predate this panel keep their font size.
-  const { preferences, setPreference, setPreferences } = useReadingPreferences({
-    childId: selectedChild?.id,
-    readingLevel: selectedChild?.reading_level,
-    fallbackFontSize: selectedChild?.default_text_size,
-  })
 
   const [story, setStory] = useState<Story | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -53,49 +42,29 @@ export default function StoryReaderPage({ params }: PageProps) {
   }, [id, stories])
 
   // --- Reading guide -------------------------------------------------------
-  // These hooks run unconditionally (the early returns below would otherwise
-  // change hook order); with the guide off they attach nothing and measure
-  // nothing, so the cost really is zero.
-  const surfaceRef = useRef<HTMLDivElement>(null)
-  const guideOn = preferences.guideMode !== 'off'
-  const content = story?.content ?? ''
-  const paragraphs = useMemo(() => tokenizeStory(content), [content])
-  const tokens = useMemo(() => flattenTokens(paragraphs), [paragraphs])
-
-  const { model, isReady } = useLineModel({
-    containerRef: surfaceRef,
-    enabled: guideOn && content.length > 0,
-    content,
+  // Runs unconditionally (the early returns below would otherwise change hook
+  // order); with the guide off it attaches nothing and measures nothing, so
+  // the cost really is zero. `default_text_size` remains the font-size
+  // fallback so profiles that predate the settings panel keep theirs.
+  const {
+    surfaceRef,
     preferences,
-  })
-
-  const { speakingWordIndex, sayWord } = useWordSpeech({
+    setPreference,
+    setPreferences,
+    guideOn,
+    guide,
+    paragraphs,
+    sayActiveWord,
+    canSay,
+    speakingWordIndex,
+    speechError,
+  } = useGuidedReading({
     childId: selectedChild?.id,
-    enabled: preferences.tapToHearEnabled,
+    readingLevel: selectedChild?.reading_level,
+    fallbackFontSize: selectedChild?.default_text_size,
+    content: story?.content ?? '',
+    contentId: story?.id ?? '',
   })
-
-  const guide = useReadingGuide({
-    containerRef: surfaceRef,
-    model,
-    isReady,
-    preferences,
-    tokens,
-    storyId: story?.id ?? '',
-    onTurnOffGuide: () => setPreference('guideMode', 'off'),
-    onWordDoubleTap: (wordIndex) => sayWord(tokens[wordIndex]),
-  })
-
-  const activeToken = guide.wordIndex >= 0 ? tokens[guide.wordIndex] : undefined
-
-  // Pulse the highlighted word while it is being spoken. Toggled on the
-  // overlay element rather than the span, so speaking never re-renders text.
-  const wordOverlayRef = guide.wordRef
-  useEffect(() => {
-    wordOverlayRef.current?.classList.toggle(
-      'is-speaking',
-      speakingWordIndex >= 0 && speakingWordIndex === guide.wordIndex
-    )
-  }, [speakingWordIndex, guide.wordIndex, wordOverlayRef])
 
   if (storiesLoading) {
     return (
@@ -366,13 +335,12 @@ export default function StoryReaderPage({ params }: PageProps) {
         guideOn={guideOn}
         onBack={guide.previousLine}
         onNext={guide.nextLine}
-        onSay={() => sayWord(activeToken)}
+        onSay={sayActiveWord}
         onOpenSettings={() => setShowQuickPanel(true)}
         disabled={!guide.isReady}
-        canSay={
-          preferences.tapToHearEnabled && !!activeToken?.normalized
-        }
+        canSay={canSay}
         speaking={speakingWordIndex >= 0}
+        message={speechError}
       />
 
       {showQuickPanel && (
