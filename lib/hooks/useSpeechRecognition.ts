@@ -55,7 +55,7 @@ interface ISpeechRecognitionConstructor {
   new (): ISpeechRecognition
 }
 
-interface UseSpeechRecognitionOptions {
+export interface UseSpeechRecognitionOptions {
   onResult?: (transcript: string) => void
   onError?: (error: string) => void
   // Continuous mode options
@@ -64,7 +64,7 @@ interface UseSpeechRecognitionOptions {
   onInterimResult?: (interim: string) => void  // Callback for interim results
 }
 
-interface UseSpeechRecognitionReturn {
+export interface UseSpeechRecognitionReturn {
   isSupported: boolean
   status: SpeechRecognitionStatus
   transcript: string

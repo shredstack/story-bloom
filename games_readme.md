@@ -11,6 +11,85 @@ StoryBloom has several interactive games designed to help children practice read
 | **Word Rescue** | Practice tricky/struggling words aloud with a pet buddy | Coins/gems + cash per mastered word |
 | **Scavenger Hunt** | Read a clue, photograph the matching object, AI verifies it | Cash per verified find + completion bonus |
 
+> The three read-aloud games can be played **without the microphone** — see
+> [Grown-up check](#grown-up-check-mic-optional-scoring) below.
+
+---
+
+## Grown-up check (mic-optional scoring)
+
+Speech recognition is not dependable everywhere. Amazon Fire tablets ship a
+WebView whose recognition service either isn't present or mishears constantly,
+and even where it works a 6-year-old's voice is a hard target. So **Word Quest,
+Word Rescue and Sentence Shenanigans can all be judged by the adult sitting with
+the child** instead of by a transcript.
+
+### The setting
+
+`app_settings.answer_check_mode` (per parent account, all children, all three
+games). Parent Dashboard → **How Reading Is Checked**.
+
+| Mode | Behavior |
+|------|----------|
+| `microphone` (default) | Today's behavior — speech decides. |
+| `grownup` | No mic. The mic button isn't rendered at all; a grown-up taps the verdict. |
+| `both` | Mic available *and* grown-up controls, for overriding a mishearing. |
+
+### Two automatic escapes, so nobody is stuck mid-session
+
+1. **No recognition on the device at all** → the game silently runs in `grownup`
+   mode. This replaces the old "Speech Recognition Not Available / Browser Not
+   Supported" dead-end screens, which used to end the game before it started.
+2. **Recognition exists but keeps failing** (the Fire tablet case — nothing
+   *looks* broken) → after 2 speech errors the game offers *Switch for now* /
+   *Switch & remember* / *Keep using the mic*. "Remember" writes the setting.
+
+Both live in `useAnswerCheckMode`; a session override always beats the saved
+preference, and neither escape ever changes the saved setting without a tap.
+
+### Anti-cheat
+
+The threat model is small and specific: a child alone with the tablet tapping
+"correct" for every word. It is deliberately **not** treated as an attacker.
+
+- The grown-up controls are gated by the existing **Parent PIN**, unlocked once
+  per browser session (the same `sessionStorage` flag `ParentPinGate` sets, so a
+  parent arriving from settings isn't asked twice) with a one-tap **Lock** for
+  stepping away. A PIN per word would make the feature unusable.
+- The controls look nothing like the game: slate, small type, ordinary-sized
+  buttons — never `KidButton`. A child scanning for the next big colorful button
+  skips past them.
+- **With no PIN configured the controls are simply open**, with a nudge to set
+  one. Locking a family out of the only working input on their device would be
+  worse than the thing being prevented.
+
+### Per-word marking (Sentence Shenanigans)
+
+The grown-up taps only the words the child **missed**, then Done — a clean read
+is one tap. `buildGrownUpWordResults` turns those positions into the same
+`SentenceWordResult[]` speech scoring produces, so accuracy, XP, pet rewards and
+the Word Rescue capture of missed words are all unchanged. In practice this data
+is *better* than the transcript's, since the parent knows what was actually said.
+
+### Data
+
+Attempts record their origin: `sentence_attempts.scored_by` and
+`word_rescue_attempts.scored_by` (`'speech' | 'grownup'`, default `'speech'`).
+Grown-up attempts store `spoken_text = NULL` (`sentence_attempts.spoken_text` was
+made nullable for this). The Word Rescue check API takes an explicit `isCorrect`
+only when `scoredBy: 'grownup'`; otherwise it still matches the transcript
+server-side.
+
+### Key files
+
+- Mode + fallbacks: `lib/hooks/useAnswerCheckMode.ts`
+- PIN gate for the controls: `lib/hooks/useGrownUpUnlock.ts`
+- Wiring both to speech in one place: `lib/hooks/useReadingCheck.ts`
+- Pure scoring: `lib/games/grownupScoring.ts` (+ `grownupScoring.test.ts`)
+- UI: `components/games/GrownUpCheckBar.tsx`, `GrownUpVerdictButtons.tsx`,
+  `GrownUpSentenceScorer.tsx`, `MicTroubleNotice.tsx`
+- Parent setting: `components/parent/AnswerCheckModeCard.tsx`
+
 ---
 
 ## Word Quest
@@ -98,6 +177,63 @@ Completion bonus:     15 XP (all sentences practiced)
 - Reading guide wiring: `lib/hooks/useGuidedReading.ts` (shared with the story reader)
 - Components: `app/(protected)/games/sentence-shenanigans/components/`
 - API: `app/api/sentence-shenanigans/`
+
+---
+
+## Word Rescue
+
+**Location:** `app/(protected)/games/word-rescue/`
+
+### Where the words come from
+
+Word Rescue practices **only** `struggling_words` — the per-child list parents
+edit at `/parent/struggling-words`. Unlike Word Quest, it never touches the
+curated `word_lists` bank. Words land on the list three ways: auto-captured when
+a child misses one in Sentence Shenanigans, added manually by a parent (single
+or bulk), or promoted from the reading-tap review queue. Mastered words drop out
+of rotation.
+
+### Session selection
+
+`selectWordRescueWords` (`lib/games/wordRescueSelection.ts`) is pure and
+tested; the route (`app/api/word-rescue/sessions/`) fetches the child's eligible
+words and hands them over. Order:
+
+1. **Focus words** the parent starred, least-recently-practiced first.
+2. Everything else by stage — seedling → growing → blooming — then
+   least-recently-practiced.
+
+Stage order **cannot** be an `ORDER BY current_stage` in the query: the column is
+text, so the database sorts `blooming` before `seedling` — exactly backwards.
+
+### Focus words (parent-chosen priority)
+
+A parent taps ⭐ next to a word to say "practice this next". Like the Scavenger
+Hunt's "This is tricky 🤔" flag, the star is a **countdown, not a flag**:
+`struggling_words.focus_repeats` holds how many future sessions the word is still
+owed (`DEFAULT_FOCUS_REPEATS` = 5), so it spends itself and no one has to
+remember to un-star it.
+
+- **Never a whole session of drills.** Focus words are capped at
+  `maxFocusWordsPerSession` (half a session, rounded up) so the rest of the list
+  still gets practiced — unless there's nothing else to fill with, in which case
+  a fully-starred list still yields a full session.
+- **Spent once per session, on the word's first attempt** (`.../check`), via the
+  `consume_word_focus_repeat` RPC for an atomic decrement. Retries inside the
+  session don't burn a repeat, and an abandoned session doesn't either.
+- **Starring a mastered word un-retires it** (back to `blooming`) — otherwise the
+  star would be silently ignored, since sessions skip mastered words.
+- Focus words lead the session so an abandoned session still practices the ones
+  the parent asked for.
+
+### Key Files
+
+- Selection policy: `lib/games/wordRescueSelection.ts` (+ `.test.ts`)
+- Session start: `app/api/word-rescue/sessions/route.ts`
+- Attempt check + repeat spend: `app/api/word-rescue/sessions/[sessionId]/check/route.ts`
+- Word list API (incl. `PATCH` to star/unstar): `app/api/struggling-words/route.ts`
+- Parent list UI: `app/(protected)/parent/struggling-words/page.tsx`
+- Hook: `lib/hooks/useStrugglingWords.ts`
 
 ---
 
@@ -277,8 +413,11 @@ Both games use shared UI components in `components/word-quest/`:
 ### Speech Recognition
 
 - **Hook:** `lib/hooks/useSpeechRecognition.ts`
-- **Browser support:** Chrome and Edge only (Web Speech API)
+- **Browser support:** Web Speech API (Chrome/Edge, Android WebView); falls back
+  to recording + `/api/speech/transcribe` (Whisper) on iOS WKWebView
 - **Requires:** Microphone permission
+- **Optional:** all three read-aloud games run without it — see
+  [Grown-up check](#grown-up-check-mic-optional-scoring)
 
 ---
 
@@ -292,6 +431,9 @@ word_progress       - Child's progress on each word
 practice_sessions   - Completed sessions
 ```
 
+Settings shared by all read-aloud games live in `app_settings`
+(`answer_check_mode`); attempts carry `scored_by`.
+
 ### Sentence Shenanigans
 
 ```
@@ -299,6 +441,15 @@ reading_materials       - Parent-uploaded materials
 material_sentences      - Extracted sentences per material
 sentence_practice_sessions - Completed sessions
 sentence_attempts       - Per-sentence results within a session
+```
+
+### Word Rescue
+
+```
+struggling_words       - Per-child practice list parents edit (stage, teaching data,
+                         focus_repeats = sessions still owed to a parent's ⭐)
+word_rescue_sessions   - One row per session (counters + rewards)
+word_rescue_attempts   - Per-word results within a session
 ```
 
 ### Scavenger Hunt

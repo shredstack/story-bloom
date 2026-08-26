@@ -267,8 +267,9 @@ export default function WordQuestPage() {
           </svg>
           <div>
             <strong>Tip:</strong> Word Quest works best in Chrome or Edge
-            browsers with a microphone. Make sure to allow microphone access
-            when asked!
+            browsers with a microphone — allow microphone access when asked. No
+            working microphone? A grown-up can mark each word instead (Parent
+            Dashboard → How Reading Is Checked).
           </div>
         </div>
       </div>

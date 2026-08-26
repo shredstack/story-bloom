@@ -9,7 +9,10 @@ import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
 import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { enterFullscreen } from '@/lib/fullscreen'
 import { useWordRescue } from '@/lib/hooks/useWordRescue'
-import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
+import { useReadingCheck } from '@/lib/hooks/useReadingCheck'
+import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
+import { GrownUpVerdictButtons } from '@/components/games/GrownUpVerdictButtons'
+import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
 import { BuddySelector } from '../components/BuddySelector'
 import { BuddyEncouragement } from '../components/BuddyEncouragement'
 import { RescueCard } from '../components/RescueCard'
@@ -53,18 +56,19 @@ export default function WordRescuePracticePage() {
     isSessionComplete,
     startSession,
     checkWord,
+    markWord,
     skipWord,
     endSession,
     reset,
   } = useWordRescue({ childId: selectedChild?.id || '' })
 
-  const handleSpeechResult = useCallback(
-    async (spoken: string) => {
-      if (!currentWord) return
-
-      setCheckError(false)
-      const result = await checkWord(spoken, usedCoachForCurrentWord)
-
+  /**
+   * Everything that happens once a verdict exists, shared by the microphone and
+   * the grown-up routes — the buddy's reaction, the celebration and the retry
+   * must not differ by who decided.
+   */
+  const applyResult = useCallback(
+    (result: WordCheckResult | null, word: string) => {
       if (!result) {
         // Network error - let the child try again without killing the session
         setCheckError(true)
@@ -72,51 +76,67 @@ export default function WordRescuePracticePage() {
         return
       }
 
-      if (result) {
-        setLastAttemptCorrect(result.correct)
+      setLastAttemptCorrect(result.correct)
 
-        if (result.correct) {
-          successHaptic()
-          // Set result type for buddy encouragement
-          if (result.isMastered) {
-            setLastResult('mastered')
-          } else if (result.stageAdvanced) {
-            setLastResult('stageUp')
-          } else {
-            setLastResult('correct')
-          }
-
-          // Show celebration
-          setCelebrationData({
-            word: currentWord.word,
-            coinsEarned: result.coinsEarned,
-            isMastered: result.isMastered,
-            cashEarned: result.cashEarned,
-            newStage: result.stageAdvanced ? result.newStage : undefined,
-          })
-          setShowCelebration(true)
+      if (result.correct) {
+        successHaptic()
+        // Set result type for buddy encouragement
+        if (result.isMastered) {
+          setLastResult('mastered')
+        } else if (result.stageAdvanced) {
+          setLastResult('stageUp')
         } else {
-          warningHaptic()
-          setLastResult('incorrect')
-          // Signal that we need to reset speech recognition so they can try again
-          setNeedsReset(true)
-          // Don't auto-show word coach - let them click "Need help?"
+          setLastResult('correct')
         }
+
+        // Show celebration
+        setCelebrationData({
+          word,
+          coinsEarned: result.coinsEarned,
+          isMastered: result.isMastered,
+          cashEarned: result.cashEarned,
+          newStage: result.stageAdvanced ? result.newStage : undefined,
+        })
+        setShowCelebration(true)
+      } else {
+        warningHaptic()
+        setLastResult('incorrect')
+        // Signal that we need to reset speech recognition so they can try again
+        setNeedsReset(true)
+        // Don't auto-show word coach - let them click "Need help?"
       }
     },
-    [currentWord, checkWord, usedCoachForCurrentWord]
+    []
   )
 
-  const {
-    status,
-    startListening,
-    stopListening,
-    transcript,
-    resetTranscript,
-    isSupported,
-  } = useSpeechRecognition({
+  const handleSpeechResult = useCallback(
+    async (spoken: string) => {
+      if (!currentWord) return
+      setCheckError(false)
+      applyResult(
+        await checkWord(spoken, usedCoachForCurrentWord),
+        currentWord.word
+      )
+    },
+    [currentWord, checkWord, usedCoachForCurrentWord, applyResult]
+  )
+
+  const { speech, check, unlock } = useReadingCheck({
     onResult: handleSpeechResult,
   })
+  const { status, startListening, stopListening, resetTranscript } = speech
+
+  const handleGrownUpVerdict = useCallback(
+    async (correct: boolean) => {
+      if (!currentWord) return
+      setCheckError(false)
+      applyResult(
+        await markWord(correct, usedCoachForCurrentWord),
+        currentWord.word
+      )
+    },
+    [currentWord, markWord, usedCoachForCurrentWord, applyResult]
+  )
 
   // Handle phase transitions
   useEffect(() => {
@@ -219,21 +239,8 @@ export default function WordRescuePracticePage() {
     )
   }
 
-  // Check browser support
-  if (!isSupported) {
-    return (
-      <div className="container mx-auto px-4 py-8 text-center">
-        <Card className="p-6 max-w-md mx-auto">
-          <h2 className="text-xl font-semibold mb-4">Browser Not Supported</h2>
-          <p className="text-gray-600 mb-4">
-            Word Rescue requires speech recognition which is not supported in your browser.
-            Please use Chrome or Edge for the best experience.
-          </p>
-          <Button onClick={() => router.push('/games')}>Back to Games</Button>
-        </Card>
-      </div>
-    )
-  }
+  // No "Browser Not Supported" dead end any more: a device without speech
+  // recognition falls back to a grown-up marking answers (see useAnswerCheckMode).
 
   // Buddy selection phase
   if (phase === 'buddy-select') {
@@ -326,6 +333,7 @@ export default function WordRescuePracticePage() {
         <RescueCard
           word={currentWord}
           status={status}
+          micEnabled={check.micEnabled && !check.isLoading}
           onMicClick={handleMicClick}
           onNeedHelp={handleNeedHelp}
           onSkip={handleSkip}
@@ -333,6 +341,26 @@ export default function WordRescuePracticePage() {
           checkError={checkError}
         />
       )}
+
+      {/* Grown-up scoring — the microphone's alternative, not its decoration. */}
+      <div className="flex flex-col items-center gap-4 mt-6">
+        {check.micTrouble && (
+          <MicTroubleNotice
+            onSwitch={check.switchToGrownUp}
+            onDismiss={check.dismissMicTrouble}
+          />
+        )}
+        {check.autoFellBack && <MicTroubleNotice automatic />}
+
+        {check.grownUpEnabled && !check.isLoading && currentWord && (
+          <GrownUpCheckBar unlock={unlock} hint={`Did they read "${currentWord.word}"?`}>
+            <GrownUpVerdictButtons
+              onVerdict={handleGrownUpVerdict}
+              disabled={showCelebration || status === 'processing'}
+            />
+          </GrownUpCheckBar>
+        )}
+      </div>
 
       {/* Rewards bar */}
       <div className="flex justify-center items-center gap-6 mt-6 text-sm">

@@ -2,7 +2,12 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { isWordMatch } from './useWordQuest'
+import {
+  buildGrownUpWordResults,
+  splitTargetWords,
+} from '@/lib/games/grownupScoring'
 import type {
+  AttemptScoredBy,
   ReadingMaterial,
   MaterialSentence,
   SentencePracticeSession,
@@ -48,6 +53,10 @@ interface UseSentenceShenanigansReturn {
   // Actions
   startSession: (materialId: string) => Promise<void>
   checkSentence: (spokenText: string) => Promise<SentenceAttemptResult | null>
+  /** Score the current sentence from a grown-up's word-by-word marking. */
+  scoreSentenceByGrownUp: (
+    missedPositions: number[]
+  ) => Promise<SentenceAttemptResult | null>
   advanceToNextSentence: () => void
   skipSentence: () => void
   endSession: () => Promise<SentencePracticeSession | null>
@@ -89,7 +98,9 @@ export function calculateSentenceAccuracy(
 
   const rawSpokenWords = normalizeText(spoken).split(/\s+/).filter(w => w.length > 0)
   const spokenWords = filterFillers(rawSpokenWords)
-  const targetWords = normalizeText(target).split(/\s+/).filter(w => w.length > 0)
+  // Shared with grown-up scoring, so `position` means the same thing whichever
+  // route produced the result.
+  const targetWords = splitTargetWords(target)
 
   if (targetWords.length === 0) {
     return { accuracy: 0, wordResults: [] }
@@ -354,16 +365,21 @@ export function useSentenceShenanigans(
     [childId]
   )
 
-  // Check a spoken sentence against the current sentence
-  const checkSentence = useCallback(
-    async (spokenText: string): Promise<SentenceAttemptResult | null> => {
+  /**
+   * The one place an attempt is recorded, whether speech or a grown-up produced
+   * it. Everything downstream — accuracy stats, XP, pet rewards, Word Rescue
+   * capture — must not care which, so neither does this.
+   */
+  const recordAttempt = useCallback(
+    async (params: {
+      accuracy: number
+      wordResults: SentenceWordResult[]
+      spokenText: string | null
+      scoredBy: AttemptScoredBy
+    }): Promise<SentenceAttemptResult | null> => {
       if (!currentSentence || !sessionId) return null
 
-      const { accuracy, wordResults } = calculateSentenceAccuracy(
-        spokenText,
-        currentSentence.sentence_text
-      )
-
+      const { accuracy, wordResults, spokenText, scoredBy } = params
       const isCorrect = accuracy >= SENTENCE_ACCURACY_THRESHOLD
 
       const attempt: SentenceAttemptResult = {
@@ -373,6 +389,7 @@ export function useSentenceShenanigans(
         wordResults,
         correct: isCorrect,
         timestamp: new Date(),
+        scoredBy,
       }
 
       setAttempts((prev) => [...prev, attempt])
@@ -396,6 +413,7 @@ export function useSentenceShenanigans(
           accuracy,
           wordResults,
           isCorrect,
+          scoredBy,
         }),
       }).catch(console.error)
 
@@ -423,7 +441,47 @@ export function useSentenceShenanigans(
 
       return attempt
     },
-    [currentSentence, sessionId]
+    [currentSentence, sessionId, childId]
+  )
+
+  // Check a spoken sentence against the current sentence
+  const checkSentence = useCallback(
+    async (spokenText: string): Promise<SentenceAttemptResult | null> => {
+      if (!currentSentence) return null
+
+      const { accuracy, wordResults } = calculateSentenceAccuracy(
+        spokenText,
+        currentSentence.sentence_text
+      )
+
+      return recordAttempt({
+        accuracy,
+        wordResults,
+        spokenText,
+        scoredBy: 'speech',
+      })
+    },
+    [currentSentence, recordAttempt]
+  )
+
+  // Score the current sentence from the words a grown-up marked as missed.
+  const scoreSentenceByGrownUp = useCallback(
+    async (missedPositions: number[]): Promise<SentenceAttemptResult | null> => {
+      if (!currentSentence) return null
+
+      const { accuracy, wordResults } = buildGrownUpWordResults(
+        currentSentence.sentence_text,
+        missedPositions
+      )
+
+      return recordAttempt({
+        accuracy,
+        wordResults,
+        spokenText: null,
+        scoredBy: 'grownup',
+      })
+    },
+    [currentSentence, recordAttempt]
   )
 
   // Advance to the next sentence (called by UI after showing feedback)
@@ -436,11 +494,12 @@ export function useSentenceShenanigans(
     if (currentSentence) {
       const attempt: SentenceAttemptResult = {
         sentence: currentSentence.sentence_text,
-        spoken: '',
+        spoken: null,
         accuracy: 0,
         wordResults: [],
         correct: false,
         timestamp: new Date(),
+        scoredBy: 'speech',
       }
       setAttempts((prev) => [...prev, attempt])
     }
@@ -504,6 +563,7 @@ export function useSentenceShenanigans(
     // Actions
     startSession,
     checkSentence,
+    scoreSentenceByGrownUp,
     advanceToNextSentence,
     skipSentence,
     endSession,

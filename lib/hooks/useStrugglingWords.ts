@@ -14,6 +14,29 @@ interface StrugglingWordsStats {
   growing: number
   blooming: number
   mastered: number
+  /** How many words the parent has starred for upcoming sessions. */
+  focused: number
+}
+
+const EMPTY_STATS: StrugglingWordsStats = {
+  total: 0,
+  seedling: 0,
+  growing: 0,
+  blooming: 0,
+  mastered: 0,
+  focused: 0,
+}
+
+/** Same counts the API returns, recomputed locally after an in-place edit. */
+function computeStats(words: StrugglingWord[]): StrugglingWordsStats {
+  return {
+    total: words.length,
+    seedling: words.filter((w) => w.current_stage === 'seedling').length,
+    growing: words.filter((w) => w.current_stage === 'growing').length,
+    blooming: words.filter((w) => w.current_stage === 'blooming').length,
+    mastered: words.filter((w) => w.current_stage === 'mastered').length,
+    focused: words.filter((w) => (w.focus_repeats || 0) > 0).length,
+  }
 }
 
 interface UseStrugglingWordsReturn {
@@ -25,6 +48,8 @@ interface UseStrugglingWordsReturn {
   addWord: (word: string) => Promise<{ success: boolean; alreadyExisted?: boolean }>
   addWords: (words: string[]) => Promise<{ added: number; existing: number; skipped: number }>
   deleteWord: (wordId: string) => Promise<boolean>
+  /** Star a word for the next `repeats` sessions, or 0 to clear the star. */
+  setWordFocus: (wordId: string, repeats: number) => Promise<boolean>
   refetch: () => Promise<void>
 }
 
@@ -34,13 +59,7 @@ export function useStrugglingWords(
   const { childId, autoFetch = true } = options
 
   const [words, setWords] = useState<StrugglingWord[]>([])
-  const [stats, setStats] = useState<StrugglingWordsStats>({
-    total: 0,
-    seedling: 0,
-    growing: 0,
-    blooming: 0,
-    mastered: 0,
-  })
+  const [stats, setStats] = useState<StrugglingWordsStats>(EMPTY_STATS)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -66,15 +85,7 @@ export function useStrugglingWords(
 
         const { words: fetchedWords, stats: fetchedStats } = await response.json()
         setWords(fetchedWords || [])
-        setStats(
-          fetchedStats || {
-            total: 0,
-            seedling: 0,
-            growing: 0,
-            blooming: 0,
-            mastered: 0,
-          }
-        )
+        setStats(fetchedStats || EMPTY_STATS)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load words')
       } finally {
@@ -182,6 +193,39 @@ export function useStrugglingWords(
     [words]
   )
 
+  const setWordFocus = useCallback(
+    async (wordId: string, repeats: number): Promise<boolean> => {
+      try {
+        const response = await fetch('/api/struggling-words', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wordId, focusRepeats: repeats }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to update word')
+        }
+
+        // Take the server's row: starring a mastered word also moves its stage,
+        // so guessing the new state locally would drift.
+        const { word: updated } = await response.json()
+
+        setWords((prev) => {
+          const next = prev.map((w) => (w.id === wordId ? updated : w))
+          setStats(computeStats(next))
+          return next
+        })
+
+        return true
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update word')
+        return false
+      }
+    },
+    []
+  )
+
   const refetch = useCallback(() => fetchWords(), [fetchWords])
 
   // Auto-fetch on mount if enabled
@@ -200,6 +244,7 @@ export function useStrugglingWords(
     addWord,
     addWords,
     deleteWord,
+    setWordFocus,
     refetch,
   }
 }

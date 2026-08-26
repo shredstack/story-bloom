@@ -6,6 +6,8 @@ import { MASTERY_STAGE_INFO, type StrugglingWord, type SpeechRecognitionStatus }
 interface RescueCardProps {
   word: StrugglingWord
   status: SpeechRecognitionStatus
+  /** False when a grown-up is marking answers instead of the microphone. */
+  micEnabled?: boolean
   onMicClick: () => void
   onNeedHelp: () => void
   onSkip: () => void
@@ -16,6 +18,7 @@ interface RescueCardProps {
 export function RescueCard({
   word,
   status,
+  micEnabled = true,
   onMicClick,
   onNeedHelp,
   onSkip,
@@ -64,26 +67,31 @@ export function RescueCard({
         )}
       </div>
 
-      {/* Mic button */}
-      <div className="flex justify-center mb-6">
-        <button
-          onClick={onMicClick}
-          disabled={status === 'processing'}
-          className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl transition-all ${
-            status === 'listening'
-              ? 'bg-red-500 text-white animate-pulse scale-110'
-              : status === 'processing'
-              ? 'bg-gray-200 text-gray-400'
-              : 'bg-purple-500 text-white hover:bg-purple-600 hover:scale-105'
-          }`}
-        >
-          {status === 'listening' ? '🎤' : status === 'processing' ? '⏳' : '🎤'}
-        </button>
-      </div>
+      {/* Mic button — absent entirely when a grown-up is doing the checking, so
+          the child isn't invited to tap something that decides nothing. */}
+      {micEnabled && (
+        <div className="flex justify-center mb-6">
+          <button
+            onClick={onMicClick}
+            disabled={status === 'processing'}
+            className={`w-20 h-20 rounded-full flex items-center justify-center text-4xl transition-all ${
+              status === 'listening'
+                ? 'bg-red-500 text-white animate-pulse scale-110'
+                : status === 'processing'
+                ? 'bg-gray-200 text-gray-400'
+                : 'bg-purple-500 text-white hover:bg-purple-600 hover:scale-105'
+            }`}
+          >
+            {status === 'listening' ? '🎤' : status === 'processing' ? '⏳' : '🎤'}
+          </button>
+        </div>
+      )}
 
       {/* Instructions */}
       <p className="text-center text-gray-600 mb-4 text-sm">
-        {status === 'listening'
+        {!micEnabled
+          ? 'Say the word out loud to your grown-up'
+          : status === 'listening'
           ? 'Listening... Say the word!'
           : status === 'processing'
           ? 'Checking...'

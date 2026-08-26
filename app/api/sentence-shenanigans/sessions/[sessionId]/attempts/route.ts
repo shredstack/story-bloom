@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { SENTENCE_ACCURACY_THRESHOLD } from '@/lib/types'
+import { SENTENCE_ACCURACY_THRESHOLD, type AttemptScoredBy } from '@/lib/types'
 
 interface RouteParams {
   params: Promise<{ sessionId: string }>
@@ -8,7 +8,8 @@ interface RouteParams {
 
 interface RecordAttemptBody {
   sentenceId: string
-  spokenText: string
+  /** Null when a grown-up scored the sentence by hand — there is no transcript. */
+  spokenText: string | null
   accuracy: number
   wordResults: Array<{
     word: string
@@ -17,6 +18,7 @@ interface RecordAttemptBody {
     position: number
   }>
   isCorrect: boolean
+  scoredBy?: AttemptScoredBy
 }
 
 // POST: Record a sentence attempt
@@ -25,10 +27,19 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { sessionId } = await params
     const body: RecordAttemptBody = await request.json()
     const { sentenceId, spokenText, accuracy, wordResults, isCorrect } = body
+    const scoredBy: AttemptScoredBy = body.scoredBy === 'grownup' ? 'grownup' : 'speech'
 
     if (!sentenceId || spokenText === undefined) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    // A grown-up-scored attempt has no transcript; a speech-scored one must.
+    if (scoredBy === 'speech' && spokenText === null) {
+      return NextResponse.json(
+        { error: 'Missing spoken text for a speech-scored attempt' },
         { status: 400 }
       )
     }
@@ -76,7 +87,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .insert({
         session_id: sessionId,
         sentence_id: sentenceId,
-        spoken_text: spokenText,
+        spoken_text: scoredBy === 'grownup' ? null : spokenText,
+        scored_by: scoredBy,
         word_count: wordCount,
         words_correct: wordsCorrect,
         accuracy_percentage: accuracy,

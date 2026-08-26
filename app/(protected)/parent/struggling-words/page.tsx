@@ -10,8 +10,9 @@ import { Button, Input, Card, TextArea, NumberInput } from '@/components/ui'
 import { VoiceRecordButton } from '@/components/VoiceRecordButton'
 import { ReadingTapReviewQueue } from '@/components/parent/ReadingTapReviewQueue'
 import { MASTERY_STAGE_INFO, type StrugglingWord, type WordMasteryStage } from '@/lib/types'
+import { DEFAULT_FOCUS_REPEATS } from '@/lib/games/wordRescueSelection'
 
-type TabFilter = 'all' | WordMasteryStage
+type TabFilter = 'all' | 'focus' | WordMasteryStage
 
 export default function ParentStrugglingWordsPage() {
   const router = useRouter()
@@ -27,6 +28,7 @@ export default function ParentStrugglingWordsPage() {
     addWord,
     addWords,
     deleteWord,
+    setWordFocus,
     refetch,
   } = useStrugglingWords({ childId: selectedChild?.id || '', autoFetch: !!selectedChild })
 
@@ -42,6 +44,9 @@ export default function ParentStrugglingWordsPage() {
 
   // Word to delete
   const [deletingWordId, setDeletingWordId] = useState<string | null>(null)
+
+  // Word whose star is being saved
+  const [focusingWordId, setFocusingWordId] = useState<string | null>(null)
 
   // Track local audio changes for immediate UI update
   const [localAudioUpdates, setLocalAudioUpdates] = useState<
@@ -70,9 +75,18 @@ export default function ParentStrugglingWordsPage() {
   }
 
   // Filter words based on active tab
-  const filteredWords = activeTab === 'all'
-    ? words
-    : words.filter((w) => w.current_stage === activeTab)
+  const filteredWords =
+    activeTab === 'all'
+      ? words
+      : activeTab === 'focus'
+        ? words.filter((w) => (w.focus_repeats || 0) > 0)
+        : words.filter((w) => w.current_stage === activeTab)
+
+  const handleToggleFocus = async (word: StrugglingWord) => {
+    setFocusingWordId(word.id)
+    await setWordFocus(word.id, (word.focus_repeats || 0) > 0 ? 0 : DEFAULT_FOCUS_REPEATS)
+    setFocusingWordId(null)
+  }
 
   const handleAddSingle = async () => {
     if (!singleWord.trim()) return
@@ -255,10 +269,17 @@ said`}
 
       {/* Word List */}
       <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h2 className="text-lg font-semibold">Current Word List</h2>
           <span className="text-sm text-gray-500">{filteredWords.length} words</span>
         </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Tap ⭐ to put a word at the front of {selectedChild.name}&apos;s next{' '}
+          {DEFAULT_FOCUS_REPEATS} Word Rescue sessions. Starred words go first, but
+          never fill more than half a session — the rest of the list still gets
+          practiced. When a star runs out, tap it again for another{' '}
+          {DEFAULT_FOCUS_REPEATS}.
+        </p>
 
         {/* Filter Tabs */}
         <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b">
@@ -271,6 +292,16 @@ said`}
             }`}
           >
             All ({stats.total})
+          </button>
+          <button
+            onClick={() => setActiveTab('focus')}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              activeTab === 'focus'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            ⭐ Focus ({stats.focused})
           </button>
           {(['seedling', 'growing', 'blooming', 'mastered'] as const).map((stage) => (
             <button
@@ -313,6 +344,8 @@ said`}
                   or you can add them manually above.
                 </p>
               </>
+            ) : activeTab === 'focus' ? (
+              <p>No focus words — tap ⭐ next to a word to practice it first.</p>
             ) : (
               <p>No {MASTERY_STAGE_INFO[activeTab].label.toLowerCase()} words</p>
             )}
@@ -325,6 +358,7 @@ said`}
             <table className="w-full">
               <thead className="text-left text-sm text-gray-500 border-b">
                 <tr>
+                  <th className="pb-2 pr-4">Focus</th>
                   <th className="pb-2 pr-4">Word</th>
                   <th className="pb-2 pr-4">Stage</th>
                   <th className="pb-2 pr-4">Progress</th>
@@ -337,6 +371,31 @@ said`}
               <tbody className="divide-y">
                 {filteredWords.map((word) => (
                   <tr key={word.id} className="text-sm">
+                    <td className="py-3 pr-4">
+                      <button
+                        onClick={() => handleToggleFocus(word)}
+                        disabled={focusingWordId === word.id}
+                        aria-pressed={(word.focus_repeats || 0) > 0}
+                        aria-label={
+                          (word.focus_repeats || 0) > 0
+                            ? `Stop focusing on ${word.word}`
+                            : `Focus on ${word.word} for the next ${DEFAULT_FOCUS_REPEATS} sessions`
+                        }
+                        title={
+                          (word.focus_repeats || 0) > 0
+                            ? `${word.focus_repeats} more ${word.focus_repeats === 1 ? 'session' : 'sessions'}`
+                            : 'Practice this next'
+                        }
+                        className="flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <span className={(word.focus_repeats || 0) > 0 ? '' : 'grayscale opacity-40'}>
+                          ⭐
+                        </span>
+                        {(word.focus_repeats || 0) > 0 && (
+                          <span className="text-xs text-gray-500">×{word.focus_repeats}</span>
+                        )}
+                      </button>
+                    </td>
                     <td className="py-3 pr-4 font-medium">{word.word}</td>
                     <td className="py-3 pr-4">
                       <span className={MASTERY_STAGE_INFO[word.current_stage].color}>

@@ -23,6 +23,8 @@ interface UseWordQuestReturn {
   attempts: PracticeAttemptResult[]
   startSession: () => Promise<void>
   checkAnswer: (spokenText: string) => Promise<boolean>
+  /** Record a verdict a grown-up gave instead of the microphone. */
+  markAnswer: (correct: boolean) => Promise<boolean>
   skipWord: () => void
   endSession: () => Promise<PracticeSession | null>
 }
@@ -86,11 +88,13 @@ export function useWordQuest(options: UseWordQuestOptions): UseWordQuestReturn {
     }
   }, [childId, readingLevel, wordsPerSession])
 
-  const checkAnswer = useCallback(
-    async (spokenText: string): Promise<boolean> => {
+  /**
+   * The one place a word attempt is recorded, whether the microphone or a
+   * grown-up produced the verdict.
+   */
+  const recordAttempt = useCallback(
+    async (isCorrect: boolean, spokenText: string): Promise<boolean> => {
       if (!currentWord || !sessionId) return false
-
-      const isCorrect = isWordMatch(spokenText, currentWord.word)
 
       const attempt: PracticeAttemptResult = {
         word: currentWord.word,
@@ -122,6 +126,20 @@ export function useWordQuest(options: UseWordQuestOptions): UseWordQuestReturn {
       return isCorrect
     },
     [currentWord, childId, sessionId]
+  )
+
+  const checkAnswer = useCallback(
+    (spokenText: string): Promise<boolean> => {
+      if (!currentWord) return Promise.resolve(false)
+      return recordAttempt(isWordMatch(spokenText, currentWord.word), spokenText)
+    },
+    [currentWord, recordAttempt]
+  )
+
+  // No transcript exists for a grown-up's verdict, so the attempt records none.
+  const markAnswer = useCallback(
+    (correct: boolean): Promise<boolean> => recordAttempt(correct, ''),
+    [recordAttempt]
   )
 
   const skipWord = useCallback(() => {
@@ -176,6 +194,7 @@ export function useWordQuest(options: UseWordQuestOptions): UseWordQuestReturn {
     attempts,
     startSession,
     checkAnswer,
+    markAnswer,
     skipWord,
     endSession,
   }
