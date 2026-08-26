@@ -180,6 +180,63 @@ Completion bonus:     15 XP (all sentences practiced)
 
 ---
 
+## Word Rescue
+
+**Location:** `app/(protected)/games/word-rescue/`
+
+### Where the words come from
+
+Word Rescue practices **only** `struggling_words` — the per-child list parents
+edit at `/parent/struggling-words`. Unlike Word Quest, it never touches the
+curated `word_lists` bank. Words land on the list three ways: auto-captured when
+a child misses one in Sentence Shenanigans, added manually by a parent (single
+or bulk), or promoted from the reading-tap review queue. Mastered words drop out
+of rotation.
+
+### Session selection
+
+`selectWordRescueWords` (`lib/games/wordRescueSelection.ts`) is pure and
+tested; the route (`app/api/word-rescue/sessions/`) fetches the child's eligible
+words and hands them over. Order:
+
+1. **Focus words** the parent starred, least-recently-practiced first.
+2. Everything else by stage — seedling → growing → blooming — then
+   least-recently-practiced.
+
+Stage order **cannot** be an `ORDER BY current_stage` in the query: the column is
+text, so the database sorts `blooming` before `seedling` — exactly backwards.
+
+### Focus words (parent-chosen priority)
+
+A parent taps ⭐ next to a word to say "practice this next". Like the Scavenger
+Hunt's "This is tricky 🤔" flag, the star is a **countdown, not a flag**:
+`struggling_words.focus_repeats` holds how many future sessions the word is still
+owed (`DEFAULT_FOCUS_REPEATS` = 5), so it spends itself and no one has to
+remember to un-star it.
+
+- **Never a whole session of drills.** Focus words are capped at
+  `maxFocusWordsPerSession` (half a session, rounded up) so the rest of the list
+  still gets practiced — unless there's nothing else to fill with, in which case
+  a fully-starred list still yields a full session.
+- **Spent once per session, on the word's first attempt** (`.../check`), via the
+  `consume_word_focus_repeat` RPC for an atomic decrement. Retries inside the
+  session don't burn a repeat, and an abandoned session doesn't either.
+- **Starring a mastered word un-retires it** (back to `blooming`) — otherwise the
+  star would be silently ignored, since sessions skip mastered words.
+- Focus words lead the session so an abandoned session still practices the ones
+  the parent asked for.
+
+### Key Files
+
+- Selection policy: `lib/games/wordRescueSelection.ts` (+ `.test.ts`)
+- Session start: `app/api/word-rescue/sessions/route.ts`
+- Attempt check + repeat spend: `app/api/word-rescue/sessions/[sessionId]/check/route.ts`
+- Word list API (incl. `PATCH` to star/unstar): `app/api/struggling-words/route.ts`
+- Parent list UI: `app/(protected)/parent/struggling-words/page.tsx`
+- Hook: `lib/hooks/useStrugglingWords.ts`
+
+---
+
 ## Scavenger Hunt
 
 **Location:** `app/(protected)/games/scavenger-hunt/`
@@ -384,6 +441,15 @@ reading_materials       - Parent-uploaded materials
 material_sentences      - Extracted sentences per material
 sentence_practice_sessions - Completed sessions
 sentence_attempts       - Per-sentence results within a session
+```
+
+### Word Rescue
+
+```
+struggling_words       - Per-child practice list parents edit (stage, teaching data,
+                         focus_repeats = sessions still owed to a parent's ⭐)
+word_rescue_sessions   - One row per session (counters + rewards)
+word_rescue_attempts   - Per-word results within a session
 ```
 
 ### Scavenger Hunt

@@ -1289,6 +1289,12 @@ export interface StrugglingWord {
   current_stage: WordMasteryStage;
   mastered_at: string | null;
 
+  /**
+   * Sessions this word is still owed because a parent starred it. Counts down
+   * as Word Rescue serves it; 0 means "not a focus word".
+   */
+  focus_repeats: number;
+
   // Audio (optional parent recording)
   parent_audio_url: string | null;
   parent_audio_storage_path: string | null;

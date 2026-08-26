@@ -160,6 +160,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       .eq('session_id', sessionId)
       .eq('struggling_word_id', strugglingWordId)
 
+    // A parent's star is owed N *sessions*, so it's spent on the word's first
+    // attempt here and never again in this session — retries within the session
+    // don't burn it, and an abandoned session doesn't either, because the word
+    // was never reached.
+    const isFirstAttemptThisSession = (attemptCount || 0) === 0
+    if (isFirstAttemptThisSession && (word.focus_repeats || 0) > 0) {
+      const { error: focusError } = await supabase.rpc(
+        'consume_word_focus_repeat',
+        { p_word_id: strugglingWordId }
+      )
+      if (focusError) {
+        // Never fail the child's attempt over the parent's bookkeeping — the
+        // word just stays starred one session longer.
+        console.error('Error consuming focus repeat:', focusError)
+      }
+    }
+
     // Record the attempt
     await supabase.from('word_rescue_attempts').insert({
       session_id: sessionId,

@@ -3,6 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { syllabify, normalizeWord } from '@/lib/utils/syllabify'
 import { validateWord } from '@/lib/utils/spellcheck'
 
+/** A star can't be topped up past a few weeks of sessions. */
+const MAX_FOCUS_REPEATS = 20
+
 // GET: List struggling words for a child
 export async function GET(request: NextRequest) {
   try {
@@ -71,6 +74,7 @@ export async function GET(request: NextRequest) {
       growing: words?.filter((w) => w.current_stage === 'growing').length || 0,
       blooming: words?.filter((w) => w.current_stage === 'blooming').length || 0,
       mastered: words?.filter((w) => w.current_stage === 'mastered').length || 0,
+      focused: words?.filter((w) => (w.focus_repeats || 0) > 0).length || 0,
     }
 
     return NextResponse.json({ words: words || [], stats })
@@ -219,6 +223,84 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error in struggling-words POST:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// PATCH: Star/unstar a word so Word Rescue focuses on it in coming sessions
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const { wordId, focusRepeats } = body
+
+    if (!wordId || typeof focusRepeats !== 'number') {
+      return NextResponse.json(
+        { error: 'Missing required fields: wordId and focusRepeats' },
+        { status: 400 }
+      )
+    }
+
+    const clamped = Math.min(
+      MAX_FOCUS_REPEATS,
+      Math.max(0, Math.round(focusRepeats))
+    )
+
+    const supabase = await createClient()
+
+    // Verify user is authenticated
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Verify ownership through the child
+    const { data: existing } = await supabase
+      .from('struggling_words')
+      .select('id, current_stage, children!inner(user_id)')
+      .eq('id', wordId)
+      .single()
+
+    if (!existing) {
+      return NextResponse.json({ error: 'Word not found' }, { status: 404 })
+    }
+
+    const owner = existing.children as unknown as { user_id: string }
+    if (owner.user_id !== user.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
+
+    const update: Record<string, unknown> = { focus_repeats: clamped }
+
+    // Starring a mastered word puts it back in rotation — otherwise the star
+    // would be silently ignored, since sessions skip mastered words.
+    if (clamped > 0 && existing.current_stage === 'mastered') {
+      update.current_stage = 'blooming'
+      update.mastered_at = null
+    }
+
+    const { data: word, error } = await supabase
+      .from('struggling_words')
+      .update(update)
+      .eq('id', wordId)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating focus:', error)
+      return NextResponse.json(
+        { error: 'Failed to update word' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ word })
+  } catch (error) {
+    console.error('Error in struggling-words PATCH:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
