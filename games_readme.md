@@ -24,44 +24,63 @@ and even where it works a 6-year-old's voice is a hard target. So **Word Quest,
 Word Rescue and Sentence Shenanigans can all be judged by the adult sitting with
 the child** instead of by a transcript.
 
-### The setting
+### It is always there
+
+The **Grown-up check** panel renders in all three games, in every mode, always.
+It is not behind a setting, and that is the whole design: it exists to rescue a
+session that is already going wrong, and an escape hatch you have to go find in
+settings first is no escape hatch. (This *was* gated behind the setting at
+first, which made it invisible to the person who needed it.)
+
+It also renders before the settings fetch resolves, so a failing device never
+has a window where there's nothing to fall back to.
+
+### The setting: does the mic show too?
 
 `app_settings.answer_check_mode` (per parent account, all children, all three
 games). Parent Dashboard → **How Reading Is Checked**.
 
 | Mode | Behavior |
 |------|----------|
-| `microphone` (default) | Today's behavior — speech decides. |
-| `grownup` | No mic. The mic button isn't rendered at all; a grown-up taps the verdict. |
-| `both` | Mic available *and* grown-up controls, for overriding a mishearing. |
+| `microphone` (default) | Mic button **and** the grown-up panel. |
+| `grownup` | No mic button anywhere — grown-up panel only. |
 
-### Two automatic escapes, so nobody is stuck mid-session
+> A third value, `'both'`, existed briefly and became identical to `'microphone'`
+> once the panel went unconditional. The DB check constraint still accepts it so
+> old rows stay valid; `normalizeAnswerCheckMode()` folds it back on read.
 
-1. **No recognition on the device at all** → the game silently runs in `grownup`
-   mode. This replaces the old "Speech Recognition Not Available / Browser Not
-   Supported" dead-end screens, which used to end the game before it started.
-2. **Recognition exists but keeps failing** (the Fire tablet case — nothing
-   *looks* broken) → after 2 speech errors the game offers *Switch for now* /
-   *Switch & remember* / *Keep using the mic*. "Remember" writes the setting.
+### Two automatic mic behaviors
+
+1. **No recognition on the device at all** → the mic button is hidden, since it
+   could only do nothing. This is also what replaced the old "Speech Recognition
+   Not Available / Browser Not Supported" screens, which used to end all three
+   games before they started.
+2. **Recognition exists but keeps failing** (nothing *looks* broken) → after 2
+   speech errors, a notice names the problem and offers *Hide the mic for now* /
+   *Hide it & remember* / *Keep the mic*. It no longer has to rescue anything —
+   the grown-up panel is already on screen underneath it.
 
 Both live in `useAnswerCheckMode`; a session override always beats the saved
-preference, and neither escape ever changes the saved setting without a tap.
+preference, and neither ever changes the saved setting without a tap.
 
 ### Anti-cheat
 
 The threat model is small and specific: a child alone with the tablet tapping
 "correct" for every word. It is deliberately **not** treated as an attacker.
 
-- The grown-up controls are gated by the existing **Parent PIN**, unlocked once
-  per browser session (the same `sessionStorage` flag `ParentPinGate` sets, so a
-  parent arriving from settings isn't asked twice) with a one-tap **Lock** for
-  stepping away. A PIN per word would make the feature unusable.
-- The controls look nothing like the game: slate, small type, ordinary-sized
+- Unlocked **once per browser session**, never per word, with a one-tap **Lock**
+  for stepping away.
+- **With a Parent PIN** → the PIN. Reuses the same `sessionStorage` flag
+  `ParentPinGate` sets, so a parent arriving from settings isn't asked twice.
+- **Without one** → a **multiplication question** (`GrownUpMathGate`), the
+  standard parental gate: nothing to set up, comfortably past an early reader,
+  three seconds for an adult. Required because the panel is on screen in every
+  game now — "no PIN means no gate" would have left a tap-to-win button under
+  every word. Clearing the math gate buys the scoring buttons and *nothing else*
+  (it never unlocks the parent area).
+- The panel looks nothing like the game: slate, small type, ordinary-sized
   buttons — never `KidButton`. A child scanning for the next big colorful button
-  skips past them.
-- **With no PIN configured the controls are simply open**, with a nudge to set
-  one. Locking a family out of the only working input on their device would be
-  worse than the thing being prevented.
+  skips past it.
 
 ### Per-word marking (Sentence Shenanigans)
 
@@ -80,14 +99,18 @@ made nullable for this). The Word Rescue check API takes an explicit `isCorrect`
 only when `scoredBy: 'grownup'`; otherwise it still matches the transcript
 server-side.
 
+**The migration must be applied** (`supabase migration up`) — `DEFAULT_APP_SETTINGS`
+includes `answer_check_mode`, so creating a settings row for a new user fails
+against an unmigrated database, and grown-up attempts won't record.
+
 ### Key files
 
-- Mode + fallbacks: `lib/hooks/useAnswerCheckMode.ts`
-- PIN gate for the controls: `lib/hooks/useGrownUpUnlock.ts`
+- Mic decision + fallbacks: `lib/hooks/useAnswerCheckMode.ts`
+- Grown-up gate (PIN or math): `lib/hooks/useGrownUpUnlock.ts`
 - Wiring both to speech in one place: `lib/hooks/useReadingCheck.ts`
 - Pure scoring: `lib/games/grownupScoring.ts` (+ `grownupScoring.test.ts`)
 - UI: `components/games/GrownUpCheckBar.tsx`, `GrownUpVerdictButtons.tsx`,
-  `GrownUpSentenceScorer.tsx`, `MicTroubleNotice.tsx`
+  `GrownUpSentenceScorer.tsx`, `GrownUpMathGate.tsx`, `MicTroubleNotice.tsx`
 - Parent setting: `components/parent/AnswerCheckModeCard.tsx`
 
 ---

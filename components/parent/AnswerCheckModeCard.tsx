@@ -6,6 +6,7 @@ import {
   ANSWER_CHECK_MODES,
   ANSWER_CHECK_MODE_INFO,
   DEFAULT_APP_SETTINGS,
+  normalizeAnswerCheckMode,
   type AnswerCheckMode,
 } from '@/lib/types'
 
@@ -19,8 +20,9 @@ import {
 export function AnswerCheckModeCard() {
   const { settings, updateSettings, isLoading } = useAppSettings()
 
-  const current: AnswerCheckMode =
+  const current: AnswerCheckMode = normalizeAnswerCheckMode(
     settings?.answer_check_mode ?? DEFAULT_APP_SETTINGS.answer_check_mode
+  )
 
   return (
     <Card className="p-6 mb-8">
@@ -33,9 +35,11 @@ export function AnswerCheckModeCard() {
             How Reading Is Checked
           </h2>
           <p className="text-gray-600 text-sm mb-4">
-            Speech recognition doesn&apos;t work on every device — Amazon Fire
-            tablets in particular. If the microphone keeps mishearing, have a
-            grown-up mark answers instead.
+            A <strong>Grown-up check</strong> panel is always available inside
+            Word Quest, Word Rescue and Sentence Shenanigans — you can mark any
+            word right or wrong yourself. This setting only decides whether the
+            microphone appears too. Turn it off if speech recognition misbehaves
+            on your device (Amazon Fire tablets in particular).
           </p>
 
           {isLoading && !settings ? (
@@ -77,8 +81,9 @@ export function AnswerCheckModeCard() {
           )}
 
           <p className="text-xs text-gray-500 mt-4">
-            Grown-up marking is protected by your Parent PIN — unlock it once per
-            session inside the game.
+            Grown-up marking is unlocked once per session inside the game — with
+            your Parent PIN if you&apos;ve set one, otherwise a multiplication
+            question the child won&apos;t get past.
           </p>
         </div>
       </div>

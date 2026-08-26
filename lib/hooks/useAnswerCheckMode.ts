@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchAppSettings } from '@/lib/api/appSettingsClient'
 import type { AnswerCheckMode } from '@/lib/types'
-import { DEFAULT_APP_SETTINGS } from '@/lib/types'
+import { DEFAULT_APP_SETTINGS, normalizeAnswerCheckMode } from '@/lib/types'
 
 interface UseAnswerCheckModeOptions {
   /**
@@ -20,10 +20,11 @@ export interface UseAnswerCheckModeReturn {
   savedMode: AnswerCheckMode
   /** What this session is actually doing, after fallbacks and overrides. */
   mode: AnswerCheckMode
-  /** Show the microphone controls. */
+  /**
+   * Show the microphone controls. The grown-up controls have no equivalent
+   * flag — they are always shown, which is the whole point of them.
+   */
   micEnabled: boolean
-  /** Show the grown-up scoring controls. */
-  grownUpEnabled: boolean
   /** The device forced the switch — no mic exists here. */
   autoFellBack: boolean
   /** The mic exists but keeps failing; worth offering the grown-up route. */
@@ -43,19 +44,20 @@ export interface UseAnswerCheckModeReturn {
 const MIC_TROUBLE_THRESHOLD = 2
 
 /**
- * Resolves how the current game session judges a reading attempt: the
- * microphone, a grown-up tapping right/wrong, or both.
+ * Decides whether the current game session offers the microphone.
  *
- * Three inputs, in increasing priority:
+ * The grown-up check is never in question — every game renders it, always. This
+ * hook only decides whether the mic appears next to it, from three inputs in
+ * increasing priority:
  *
  *  1. The saved `answer_check_mode` preference.
- *  2. The device — with no speech recognition at all there is nothing to fall
- *     back FROM, so a grown-up takes over automatically rather than the game
- *     showing the old "Browser Not Supported" dead end.
+ *  2. The device — with no speech recognition at all the mic button would do
+ *     nothing, so it is hidden. (This is also what replaced the old "Browser
+ *     Not Supported" screens, which used to end the game before it started.)
  *  3. An in-game override, for the case that actually bites on an Amazon Fire
  *     tablet: recognition *exists*, so nothing looks broken, it just mishears
  *     or times out. `reportMicTrouble` counts those failures and `micTrouble`
- *     lets the game offer the switch mid-session.
+ *     offers to put the mic away for good.
  */
 export function useAnswerCheckMode({
   speechSupported,
@@ -80,7 +82,7 @@ export function useAnswerCheckMode({
       const settings = await fetchAppSettings()
       if (cancelled) return
       if (settings?.answer_check_mode) {
-        setSavedMode(settings.answer_check_mode)
+        setSavedMode(normalizeAnswerCheckMode(settings.answer_check_mode))
       }
       setIsLoading(false)
     }
@@ -101,6 +103,8 @@ export function useAnswerCheckMode({
     if (noMicOnDevice) return 'grownup'
     return savedMode
   }, [sessionOverride, noMicOnDevice, savedMode])
+
+  const micEnabled = mode !== 'grownup'
 
   const switchToGrownUp = useCallback((persist = false) => {
     setSessionOverride('grownup')
@@ -131,11 +135,10 @@ export function useAnswerCheckMode({
     isLoading,
     savedMode,
     mode,
-    micEnabled: mode !== 'grownup',
-    grownUpEnabled: mode !== 'microphone',
+    micEnabled,
     autoFellBack: noMicOnDevice && !sessionOverride,
     micTrouble:
-      mode === 'microphone' &&
+      micEnabled &&
       !troubleDismissed &&
       failureCount >= MIC_TROUBLE_THRESHOLD,
     reportMicTrouble,

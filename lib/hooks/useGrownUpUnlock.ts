@@ -8,38 +8,47 @@ import {
   clearPinVerification,
 } from '@/components/parent/ParentPinGate'
 
+/** Which challenge stands between the child and the scoring buttons. */
+export type GrownUpChallenge = 'pin' | 'math'
+
 export interface UseGrownUpUnlockReturn {
   /** True until we know whether a PIN exists. */
   isLoading: boolean
   /** A parent PIN is configured on this account. */
   hasPin: boolean
+  /** Which prompt `requestUnlock` will raise. */
+  challenge: GrownUpChallenge
   /** The grown-up controls may be used right now. */
   isUnlocked: boolean
-  /** True while the PIN prompt should be on screen. */
+  /** True while the unlock prompt should be on screen. */
   isPrompting: boolean
-  /** Open the PIN prompt (no-op, auto-unlocks, when no PIN is set). */
+  /** Open the unlock prompt. */
   requestUnlock: () => void
-  /** The PIN prompt succeeded. */
+  /** The prompt succeeded. */
   confirmUnlock: () => void
-  /** The PIN prompt was dismissed. */
+  /** The prompt was dismissed. */
   cancelUnlock: () => void
   /** Hide the controls again — for stepping away mid-session. */
   lock: () => void
 }
 
 /**
- * Gates the grown-up scoring controls behind the parent PIN.
+ * Gates the grown-up scoring controls.
  *
  * The threat model is small and specific: a child alone with the tablet tapping
- * "correct" for every word. It is not an attacker — so this reuses the PIN the
- * app already has, unlocks once for the whole browser session (the same
- * `sessionStorage` flag `ParentPinGate` sets, so a parent who just came from
- * settings isn't asked twice), and never interrupts a word-by-word rhythm with
- * a prompt.
+ * "correct" for every word. It is not an attacker — so this unlocks once for the
+ * whole browser session and never interrupts a word-by-word rhythm with a
+ * prompt.
  *
- * With no PIN configured the controls are simply open. Locking a family out of
- * the only working input on their device would be worse than the thing being
- * prevented; the games nudge toward setting a PIN instead.
+ * Two challenges, because the controls are on screen in every game and "no PIN
+ * means no gate" would leave a tap-to-win button under every word:
+ *
+ *  - **PIN**, when the account has one. Reuses the same `sessionStorage` flag
+ *    `ParentPinGate` sets, so a parent arriving from settings isn't asked twice.
+ *  - **Multiplication**, when it doesn't. Nothing to set up, comfortably past an
+ *    early reader, three seconds for an adult. Never a hard "no" — locking a
+ *    family out of the only working input on their device would be worse than
+ *    the thing being prevented.
  */
 export function useGrownUpUnlock(): UseGrownUpUnlockReturn {
   const [isLoading, setIsLoading] = useState(true)
@@ -67,18 +76,16 @@ export function useGrownUpUnlock(): UseGrownUpUnlockReturn {
   }, [])
 
   const requestUnlock = useCallback(() => {
-    if (!hasPin) {
-      setVerified(true)
-      return
-    }
     setIsPrompting(true)
-  }, [hasPin])
+  }, [])
 
   const confirmUnlock = useCallback(() => {
-    markPinVerified()
+    // Only a real PIN entry may unlock the parent area; clearing the math gate
+    // buys the scoring buttons and nothing else.
+    if (hasPin) markPinVerified()
     setIsPrompting(false)
     setVerified(true)
-  }, [])
+  }, [hasPin])
 
   const cancelUnlock = useCallback(() => {
     setIsPrompting(false)
@@ -94,7 +101,8 @@ export function useGrownUpUnlock(): UseGrownUpUnlockReturn {
   return {
     isLoading,
     hasPin,
-    isUnlocked: !hasPin || verified,
+    challenge: hasPin ? 'pin' : 'math',
+    isUnlocked: verified,
     isPrompting,
     requestUnlock,
     confirmUnlock,

@@ -352,7 +352,9 @@ export default function WordRescuePracticePage() {
         )}
         {check.autoFellBack && <MicTroubleNotice automatic />}
 
-        {check.grownUpEnabled && !check.isLoading && currentWord && (
+        {/* Always here, in every mode — an escape hatch you have to go find in
+            settings first is no escape hatch. */}
+        {currentWord && (
           <GrownUpCheckBar unlock={unlock} hint={`Did they read "${currentWord.word}"?`}>
             <GrownUpVerdictButtons
               onVerdict={handleGrownUpVerdict}

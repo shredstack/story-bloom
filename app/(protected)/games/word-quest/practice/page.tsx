@@ -324,14 +324,14 @@ export default function PracticePage() {
         )}
         {check.autoFellBack && <MicTroubleNotice automatic />}
 
-        {check.grownUpEnabled && !check.isLoading && (
-          <GrownUpCheckBar unlock={unlock} hint={`Did they read "${currentWord?.word ?? ''}"?`}>
-            <GrownUpVerdictButtons
-              onVerdict={handleGrownUpVerdict}
-              disabled={!currentWord || lastResult !== null || isAdvancing}
-            />
-          </GrownUpCheckBar>
-        )}
+        {/* Always here, in every mode — an escape hatch you have to go find in
+            settings first is no escape hatch. */}
+        <GrownUpCheckBar unlock={unlock} hint={`Did they read "${currentWord?.word ?? ''}"?`}>
+          <GrownUpVerdictButtons
+            onVerdict={handleGrownUpVerdict}
+            disabled={!currentWord || lastResult !== null || isAdvancing}
+          />
+        </GrownUpCheckBar>
 
         {/* Big, obvious escape hatch so a kid reaches for "Skip" instead of
             fishing for the OS back gesture (§B5). */}
