@@ -1347,16 +1347,29 @@ export interface WordRescueAttempt {
 
 // App settings (user-level, parent-configurable)
 /**
- * How a reading attempt gets judged.
+ * Whether the read-aloud games offer the microphone.
  *
- * The microphone is not dependable everywhere — Amazon Fire tablets ship a
- * WebView with no working speech-recognition service, and even where it works a
- * young reader's voice is often misheard. `grownup` lets the adult sitting with
- * the child be the judge instead; `both` keeps the mic and adds the adult as an
- * override.
+ * The grown-up check is NOT one of the choices here — it is always available in
+ * every game, behind the grown-up gate. That is deliberate: it is the escape
+ * hatch for a session already going wrong (a Fire tablet mishearing every word),
+ * and an escape hatch you have to go find in settings first is no escape hatch.
+ *
+ * So this setting only answers: is the mic shown alongside it?
+ *
+ *   'microphone' - mic + grown-up check (default)
+ *   'grownup'    - grown-up check only; no mic button anywhere
  */
-export const ANSWER_CHECK_MODES = ['microphone', 'grownup', 'both'] as const;
+export const ANSWER_CHECK_MODES = ['microphone', 'grownup'] as const;
 export type AnswerCheckMode = (typeof ANSWER_CHECK_MODES)[number];
+
+/**
+ * Folds anything unrecognized — notably the retired `'both'`, which became
+ * identical to `'microphone'` once the grown-up check was always on — back to
+ * the default. The DB column still accepts `'both'`, so old rows stay readable.
+ */
+export function normalizeAnswerCheckMode(value: unknown): AnswerCheckMode {
+  return value === 'grownup' ? 'grownup' : 'microphone';
+}
 
 /** Who decided an attempt was right or wrong (mirrors `*_attempts.scored_by`). */
 export type AttemptScoredBy = 'speech' | 'grownup';
@@ -1366,22 +1379,16 @@ export const ANSWER_CHECK_MODE_INFO: Record<
   { label: string; description: string; emoji: string }
 > = {
   microphone: {
-    label: 'Microphone',
+    label: 'Microphone + grown-up',
     description:
-      'The app listens and decides. Best on devices where speech recognition works well.',
+      'The app listens and decides, and a grown-up can still mark or override any word.',
     emoji: '🎤',
   },
   grownup: {
-    label: 'A grown-up checks',
+    label: 'Grown-up only',
     description:
-      'No microphone. A grown-up sitting with the child taps right or wrong. Works on any device.',
+      'Hide the microphone entirely. A grown-up sitting with the child taps right or wrong. Best when speech recognition misbehaves.',
     emoji: '🧑‍🏫',
-  },
-  both: {
-    label: 'Both',
-    description:
-      'The microphone is available, and a grown-up can score or override any word.',
-    emoji: '🎤+🧑‍🏫',
   },
 };
 

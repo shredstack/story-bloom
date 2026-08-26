@@ -458,10 +458,9 @@ export default function PracticeSessionPage({ params }: PageProps) {
         )}
         {check.autoFellBack && <MicTroubleNotice automatic />}
 
-        {check.grownUpEnabled &&
-          !check.isLoading &&
-          currentSentence &&
-          lastResult === null && (
+        {/* Always here, in every mode — an escape hatch you have to go find in
+            settings first is no escape hatch. */}
+        {currentSentence && lastResult === null && (
             <GrownUpCheckBar
               unlock={unlock}
               hint="Tap the words they missed, then Done."

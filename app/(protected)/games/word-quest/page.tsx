@@ -268,8 +268,8 @@ export default function WordQuestPage() {
           <div>
             <strong>Tip:</strong> Word Quest works best in Chrome or Edge
             browsers with a microphone — allow microphone access when asked. No
-            working microphone? A grown-up can mark each word instead (Parent
-            Dashboard → How Reading Is Checked).
+            working microphone? Use the <strong>Grown-up check</strong> panel
+            below the word to mark each one yourself.
           </div>
         </div>
       </div>

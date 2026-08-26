@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { ParentPinModal } from '@/components/parent/ParentPinModal'
+import { GrownUpMathGate } from '@/components/games/GrownUpMathGate'
 import type { UseGrownUpUnlockReturn } from '@/lib/hooks/useGrownUpUnlock'
 
 interface GrownUpCheckBarProps {
@@ -42,7 +43,7 @@ export function GrownUpCheckBar({
         <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
           Grown-up
         </span>
-        {unlock.isUnlocked && unlock.hasPin && (
+        {unlock.isUnlocked && (
           <button
             type="button"
             onClick={unlock.lock}
@@ -63,7 +64,7 @@ export function GrownUpCheckBar({
               <Link href="/parent" className="underline underline-offset-2">
                 set a Parent PIN
               </Link>{' '}
-              so only you can mark answers.
+              for a stronger lock than the math question.
             </p>
           )}
         </>
@@ -77,13 +78,19 @@ export function GrownUpCheckBar({
         </button>
       )}
 
-      {unlock.isPrompting && (
-        <ParentPinModal
-          mode="verify"
-          onSuccess={unlock.confirmUnlock}
-          onCancel={unlock.cancelUnlock}
-        />
-      )}
+      {unlock.isPrompting &&
+        (unlock.challenge === 'pin' ? (
+          <ParentPinModal
+            mode="verify"
+            onSuccess={unlock.confirmUnlock}
+            onCancel={unlock.cancelUnlock}
+          />
+        ) : (
+          <GrownUpMathGate
+            onSuccess={unlock.confirmUnlock}
+            onCancel={unlock.cancelUnlock}
+          />
+        ))}
     </section>
   )
 }

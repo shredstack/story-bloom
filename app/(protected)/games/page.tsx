@@ -223,8 +223,9 @@ export default function GamesPage() {
           <div>
             <strong>Tip:</strong> Games work best in Chrome or Edge browsers
             with a microphone — allow microphone access when asked. If the
-            microphone struggles on your device, a grown-up can mark answers
-            instead (Parent Dashboard → How Reading Is Checked).
+            microphone struggles on your device, use the{' '}
+            <strong>Grown-up check</strong> panel inside any game to mark
+            answers yourself.
           </div>
         </div>
       </div>
