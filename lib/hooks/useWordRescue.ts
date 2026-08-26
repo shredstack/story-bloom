@@ -34,6 +34,8 @@ interface UseWordRescueReturn {
   // Actions
   startSession: (buddyPetId?: string) => Promise<void>
   checkWord: (spokenText: string, usedCoach?: boolean) => Promise<WordCheckResult | null>
+  /** Record a verdict a grown-up gave instead of the microphone. */
+  markWord: (correct: boolean, usedCoach?: boolean) => Promise<WordCheckResult | null>
   skipWord: () => void
   endSession: () => Promise<WordRescueSession | null>
   reset: () => void
@@ -104,8 +106,17 @@ export function useWordRescue({ childId }: UseWordRescueOptions): UseWordRescueR
     [childId]
   )
 
-  const checkWord = useCallback(
-    async (spokenText: string, usedCoach = false): Promise<WordCheckResult | null> => {
+  /**
+   * The one path an attempt takes to the server, whether the microphone or a
+   * grown-up decided it. The server still owns rewards and mastery either way —
+   * only the verdict's origin differs.
+   */
+  const submitAttempt = useCallback(
+    async (payload: {
+      spokenText?: string
+      grownUpCorrect?: boolean
+      usedCoach: boolean
+    }): Promise<WordCheckResult | null> => {
       if (!currentWord || !sessionId) return null
 
       try {
@@ -114,8 +125,10 @@ export function useWordRescue({ childId }: UseWordRescueOptions): UseWordRescueR
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             strugglingWordId: currentWord.id,
-            spokenText,
-            usedCoach,
+            usedCoach: payload.usedCoach,
+            ...(payload.grownUpCorrect === undefined
+              ? { spokenText: payload.spokenText, scoredBy: 'speech' }
+              : { isCorrect: payload.grownUpCorrect, scoredBy: 'grownup' }),
           }),
         })
 
@@ -148,9 +161,17 @@ export function useWordRescue({ childId }: UseWordRescueOptions): UseWordRescueR
     [currentWord, sessionId]
   )
 
-  const advanceToNextWord = useCallback(() => {
-    setCurrentWordIndex((prev) => prev + 1)
-  }, [])
+  const checkWord = useCallback(
+    (spokenText: string, usedCoach = false) =>
+      submitAttempt({ spokenText, usedCoach }),
+    [submitAttempt]
+  )
+
+  const markWord = useCallback(
+    (correct: boolean, usedCoach = false) =>
+      submitAttempt({ grownUpCorrect: correct, usedCoach }),
+    [submitAttempt]
+  )
 
   const skipWord = useCallback(() => {
     setCurrentWordIndex((prev) => prev + 1)
@@ -208,6 +229,7 @@ export function useWordRescue({ childId }: UseWordRescueOptions): UseWordRescueR
     isSessionComplete,
     startSession,
     checkWord,
+    markWord,
     skipWord,
     endSession,
     reset,

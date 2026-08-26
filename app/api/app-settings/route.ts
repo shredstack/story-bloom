@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { DEFAULT_APP_SETTINGS } from '@/lib/types'
+import {
+  DEFAULT_APP_SETTINGS,
+  ANSWER_CHECK_MODES,
+  type AnswerCheckMode,
+} from '@/lib/types'
 
 // GET: Get user's app settings (creates default if not exists)
 export async function GET() {
@@ -99,6 +103,7 @@ export async function PATCH(request: NextRequest) {
       'weekly_cash_cap',
       'words_per_session',
       'show_word_coach_automatically',
+      'answer_check_mode',
       'scavenger_hunt_enabled',
       'cash_per_scavenger_find',
       'scavenger_completion_bonus',
@@ -112,6 +117,18 @@ export async function PATCH(request: NextRequest) {
       if (allowedFields.includes(key)) {
         validUpdates[key] = value
       }
+    }
+
+    // Reject an unknown mode here rather than letting the DB check constraint
+    // surface as an opaque 500.
+    if (
+      'answer_check_mode' in validUpdates &&
+      !ANSWER_CHECK_MODES.includes(validUpdates.answer_check_mode as AnswerCheckMode)
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid answer_check_mode' },
+        { status: 400 }
+      )
     }
 
     if (Object.keys(validUpdates).length === 0) {

@@ -4,6 +4,7 @@ import { isWordMatch } from '@/lib/utils/wordMatch'
 import {
   WORD_RESCUE_REWARDS,
   calculateWordStage,
+  type AttemptScoredBy,
   type WordMasteryStage,
   type WordCheckResult,
 } from '@/lib/types'
@@ -14,8 +15,12 @@ interface RouteParams {
 
 interface CheckWordBody {
   strugglingWordId: string
-  spokenText: string
+  /** Present when speech decided; absent when a grown-up did. */
+  spokenText?: string
+  /** The grown-up's verdict. Only honored with `scoredBy: 'grownup'`. */
+  isCorrect?: boolean
   usedCoach?: boolean
+  scoredBy?: AttemptScoredBy
 }
 
 // POST: Check a word attempt
@@ -24,10 +29,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { sessionId } = await params
     const body: CheckWordBody = await request.json()
     const { strugglingWordId, spokenText, usedCoach = false } = body
+    const scoredBy: AttemptScoredBy = body.scoredBy === 'grownup' ? 'grownup' : 'speech'
 
-    if (!strugglingWordId || spokenText === undefined) {
+    if (!strugglingWordId) {
       return NextResponse.json(
         { error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    if (scoredBy === 'speech' && spokenText === undefined) {
+      return NextResponse.json(
+        { error: 'Missing spoken text' },
+        { status: 400 }
+      )
+    }
+
+    if (scoredBy === 'grownup' && typeof body.isCorrect !== 'boolean') {
+      return NextResponse.json(
+        { error: 'Missing grown-up verdict' },
         { status: 400 }
       )
     }
@@ -78,10 +98,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const masteryThreshold = settings?.mastery_correct_threshold || 2
 
-    // Check if the spoken text matches the word
-    const normalizedSpoken = spokenText.toLowerCase().trim()
-    const normalizedWord = word.word.toLowerCase().trim()
-    const isCorrect = isWordMatch(normalizedSpoken, normalizedWord)
+    // A grown-up's verdict is taken as given; otherwise the transcript is matched.
+    const isCorrect =
+      scoredBy === 'grownup'
+        ? (body.isCorrect as boolean)
+        : isWordMatch(
+            (spokenText ?? '').toLowerCase().trim(),
+            word.word.toLowerCase().trim()
+          )
 
     // Calculate rewards
     let coinsEarned = 0
@@ -140,7 +164,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     await supabase.from('word_rescue_attempts').insert({
       session_id: sessionId,
       struggling_word_id: strugglingWordId,
-      spoken_text: spokenText,
+      spoken_text: scoredBy === 'grownup' ? null : spokenText,
+      scored_by: scoredBy,
       is_correct: isCorrect,
       attempt_number: (attemptCount || 0) + 1,
       used_word_coach: usedCoach,

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useChild } from '../ProtectedLayoutClient'
 import { Card, Button } from '@/components/ui'
 import { ParentPinModal } from '@/components/parent/ParentPinModal'
+import { AnswerCheckModeCard } from '@/components/parent/AnswerCheckModeCard'
 
 interface ParentCardProps {
   title: string
@@ -149,6 +150,9 @@ export default function ParentPage() {
           color="bg-emerald-500"
         />
       </div>
+
+      {/* How reading is checked: microphone vs. a grown-up marking answers. */}
+      <AnswerCheckModeCard />
 
       {/* PIN Settings Section */}
       <Card className="p-6 mb-8">

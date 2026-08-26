@@ -1228,11 +1228,13 @@ export interface ExtractedSentence {
 // Sentence practice attempt result (client-side)
 export interface SentenceAttemptResult {
   sentence: string;
-  spoken: string;
+  /** The transcript, or null when a grown-up scored the attempt by hand. */
+  spoken: string | null;
   accuracy: number;
   wordResults: SentenceWordResult[];
   correct: boolean;
   timestamp: Date;
+  scoredBy: AttemptScoredBy;
 }
 
 // Accuracy threshold for "correct" sentence (50%)
@@ -1338,6 +1340,45 @@ export interface WordRescueAttempt {
 }
 
 // App settings (user-level, parent-configurable)
+/**
+ * How a reading attempt gets judged.
+ *
+ * The microphone is not dependable everywhere — Amazon Fire tablets ship a
+ * WebView with no working speech-recognition service, and even where it works a
+ * young reader's voice is often misheard. `grownup` lets the adult sitting with
+ * the child be the judge instead; `both` keeps the mic and adds the adult as an
+ * override.
+ */
+export const ANSWER_CHECK_MODES = ['microphone', 'grownup', 'both'] as const;
+export type AnswerCheckMode = (typeof ANSWER_CHECK_MODES)[number];
+
+/** Who decided an attempt was right or wrong (mirrors `*_attempts.scored_by`). */
+export type AttemptScoredBy = 'speech' | 'grownup';
+
+export const ANSWER_CHECK_MODE_INFO: Record<
+  AnswerCheckMode,
+  { label: string; description: string; emoji: string }
+> = {
+  microphone: {
+    label: 'Microphone',
+    description:
+      'The app listens and decides. Best on devices where speech recognition works well.',
+    emoji: '🎤',
+  },
+  grownup: {
+    label: 'A grown-up checks',
+    description:
+      'No microphone. A grown-up sitting with the child taps right or wrong. Works on any device.',
+    emoji: '🧑‍🏫',
+  },
+  both: {
+    label: 'Both',
+    description:
+      'The microphone is available, and a grown-up can score or override any word.',
+    emoji: '🎤+🧑‍🏫',
+  },
+};
+
 export interface AppSettings {
   id: string;
   user_id: string;
@@ -1358,6 +1399,8 @@ export interface AppSettings {
   // Game settings
   words_per_session: number;
   show_word_coach_automatically: boolean;
+  /** Microphone vs. a grown-up marking right/wrong, across every read-aloud game. */
+  answer_check_mode: AnswerCheckMode;
 
   // Scavenger Hunt settings
   scavenger_hunt_enabled: boolean;
@@ -1394,6 +1437,7 @@ export const DEFAULT_APP_SETTINGS: Omit<AppSettings, 'id' | 'user_id' | 'created
   weekly_cash_cap: 20.00,
   words_per_session: 10,
   show_word_coach_automatically: true,
+  answer_check_mode: 'microphone',
   scavenger_hunt_enabled: true,
   cash_per_scavenger_find: 0.10,
   scavenger_completion_bonus: 0.50,

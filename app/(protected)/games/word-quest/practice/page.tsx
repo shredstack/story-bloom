@@ -9,9 +9,12 @@ import { KidButton } from '@/components/games/KidButton'
 import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
 import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { useWordQuest } from '@/lib/hooks/useWordQuest'
-import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
+import { useReadingCheck } from '@/lib/hooks/useReadingCheck'
 import { usePets } from '@/lib/hooks/usePets'
 import { Button, Card } from '@/components/ui'
+import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
+import { GrownUpVerdictButtons } from '@/components/games/GrownUpVerdictButtons'
+import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
 import {
   WordCard,
   SpeechButton,
@@ -48,6 +51,7 @@ export default function PracticePage() {
     isSessionComplete,
     startSession,
     checkAnswer,
+    markAnswer,
     skipWord,
     endSession,
   } = useWordQuest({
@@ -72,37 +76,49 @@ export default function PracticePage() {
     return 'cat'
   }, [])
 
+  // Shared by both routes to a verdict, so the celebration, the haptic and the
+  // pacing are identical whether the mic or a grown-up decided.
+  const showResult = useCallback((isCorrect: boolean) => {
+    if (isCorrect) successHaptic()
+    else warningHaptic()
+    setLastResult(isCorrect ? 'correct' : 'incorrect')
+    setIsAdvancing(true)
+
+    // Advance to next word after showing result
+    const delay = isCorrect ? 1500 : 2000
+    setTimeout(() => {
+      setLastResult(null)
+      setIsAdvancing(false)
+    }, delay)
+  }, [])
+
   const handleSpeechResult = useCallback(
     async (text: string) => {
       if (!currentWord || isAdvancing) return
-
-      const isCorrect = await checkAnswer(text)
-      if (isCorrect) successHaptic()
-      else warningHaptic()
-      setLastResult(isCorrect ? 'correct' : 'incorrect')
-      setIsAdvancing(true)
-
-      // Advance to next word after showing result
-      const delay = isCorrect ? 1500 : 2000
-      setTimeout(() => {
-        setLastResult(null)
-        setIsAdvancing(false)
-      }, delay)
+      showResult(await checkAnswer(text))
     },
-    [currentWord, checkAnswer, isAdvancing]
+    [currentWord, checkAnswer, isAdvancing, showResult]
   )
 
+  const { speech, check, unlock } = useReadingCheck({
+    onResult: handleSpeechResult,
+  })
   const {
-    isSupported,
     status,
     transcript,
     startListening,
     stopListening,
     resetTranscript,
     error: speechError,
-  } = useSpeechRecognition({
-    onResult: handleSpeechResult,
-  })
+  } = speech
+
+  const handleGrownUpVerdict = useCallback(
+    async (correct: boolean) => {
+      if (!currentWord || isAdvancing) return
+      showResult(await markAnswer(correct))
+    },
+    [currentWord, markAnswer, isAdvancing, showResult]
+  )
 
   // Start session on mount
   useEffect(() => {
@@ -189,7 +205,7 @@ export default function PracticePage() {
   // nav bar can't navigate away mid-session. Chrome returns on loading/error
   // screens and once the session is complete (the reward overlays cover the page).
   const isPlaying =
-    isSupported && !isLoading && !error && !!selectedChild && !isSessionComplete
+    !isLoading && !error && !!selectedChild && !isSessionComplete
   useImmersiveMode(isPlaying)
 
   // Quit confirm state + native back-button "request-quit" listener (only while playing).
@@ -200,23 +216,8 @@ export default function PracticePage() {
     return null
   }
 
-  if (!isSupported) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-12 text-center">
-        <Card className="py-8">
-          <div className="text-6xl mb-4">🎤</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            Speech Recognition Not Available
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Your browser doesn&apos;t support speech recognition. Please try
-            using Chrome or Edge.
-          </p>
-          <Button onClick={() => router.push('/games/word-quest')}>Go Back</Button>
-        </Card>
-      </div>
-    )
-  }
+  // No "Speech Recognition Not Available" dead end any more: a device without a
+  // microphone falls back to a grown-up marking answers (see useAnswerCheckMode).
 
   if (isLoading) {
     return (
@@ -278,24 +279,28 @@ export default function PracticePage() {
 
       {/* Speech feedback */}
       <div className="h-8 text-center mb-4">
-        {transcript && (
+        {check.micEnabled && transcript && (
           <span className="text-lg text-gray-500">
             I heard: &quot;
             <span className="font-medium text-gray-700">{transcript}</span>
             &quot;
           </span>
         )}
-        {speechError && <span className="text-red-500">{speechError}</span>}
+        {check.micEnabled && speechError && (
+          <span className="text-red-500">{speechError}</span>
+        )}
       </div>
 
       {/* Controls */}
       <div className="flex flex-col items-center gap-6">
-        <SpeechButton
-          status={status}
-          onStart={startListening}
-          onStop={stopListening}
-          disabled={!currentWord || lastResult !== null || isAdvancing}
-        />
+        {check.micEnabled && !check.isLoading && (
+          <SpeechButton
+            status={status}
+            onStart={startListening}
+            onStop={stopListening}
+            disabled={!currentWord || lastResult !== null || isAdvancing}
+          />
+        )}
 
         <p className="text-gray-500 text-sm text-center">
           {status === 'listening'
@@ -304,8 +309,29 @@ export default function PracticePage() {
               ? 'Great job! ⭐'
               : lastResult === 'incorrect'
                 ? 'Try again! You can do it!'
-                : 'Tap the microphone and read the word'}
+                : check.micEnabled
+                  ? 'Tap the microphone and read the word'
+                  : 'Read the word out loud to your grown-up'}
         </p>
+
+        {/* The microphone keeps failing — offer the way out rather than making
+            a parent hunt through settings mid-game. */}
+        {check.micTrouble && (
+          <MicTroubleNotice
+            onSwitch={check.switchToGrownUp}
+            onDismiss={check.dismissMicTrouble}
+          />
+        )}
+        {check.autoFellBack && <MicTroubleNotice automatic />}
+
+        {check.grownUpEnabled && !check.isLoading && (
+          <GrownUpCheckBar unlock={unlock} hint={`Did they read "${currentWord?.word ?? ''}"?`}>
+            <GrownUpVerdictButtons
+              onVerdict={handleGrownUpVerdict}
+              disabled={!currentWord || lastResult !== null || isAdvancing}
+            />
+          </GrownUpCheckBar>
+        )}
 
         {/* Big, obvious escape hatch so a kid reaches for "Skip" instead of
             fishing for the OS back gesture (§B5). */}

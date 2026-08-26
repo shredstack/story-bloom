@@ -47,7 +47,7 @@ export function ParentPinGate({ children }: ParentPinGateProps) {
   }, [])
 
   const handleVerifySuccess = useCallback(() => {
-    sessionStorage.setItem(SESSION_STORAGE_KEY, 'true')
+    markPinVerified()
     setIsVerified(true)
   }, [])
 
@@ -175,6 +175,15 @@ export function ParentPinGate({ children }: ParentPinGateProps) {
       onCancel={() => router.push('/dashboard')}
     />
   )
+}
+
+// Helper to record a successful PIN entry for the rest of the browser session.
+// Shared so anything that verifies the PIN outside this gate (e.g. the grown-up
+// scoring controls inside the games) unlocks the same way.
+export function markPinVerified() {
+  if (typeof window !== 'undefined') {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, 'true')
+  }
 }
 
 // Helper to clear PIN verification (call when user logs out)

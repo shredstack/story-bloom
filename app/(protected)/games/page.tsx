@@ -185,7 +185,8 @@ export default function GamesPage() {
             <div className="text-3xl mb-2">🎯</div>
             <h4 className="font-semibold text-gray-800 mb-1">Practice</h4>
             <p className="text-sm text-gray-600">
-              Read words or sentences out loud using your microphone
+              Read words or sentences out loud — the microphone listens, or a
+              grown-up marks them
             </p>
           </div>
           <div className="text-center p-4">
@@ -221,7 +222,9 @@ export default function GamesPage() {
           </svg>
           <div>
             <strong>Tip:</strong> Games work best in Chrome or Edge browsers
-            with a microphone. Make sure to allow microphone access when asked!
+            with a microphone — allow microphone access when asked. If the
+            microphone struggles on your device, a grown-up can mark answers
+            instead (Parent Dashboard → How Reading Is Checked).
           </div>
         </div>
       </div>

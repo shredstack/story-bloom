@@ -9,8 +9,11 @@ import { KidButton } from '@/components/games/KidButton'
 import { useQuitGuard } from '@/lib/hooks/useQuitGuard'
 import { successHaptic, warningHaptic } from '@/lib/native/haptics'
 import { useSentenceShenanigans } from '@/lib/hooks/useSentenceShenanigans'
-import { useSpeechRecognition } from '@/lib/hooks/useSpeechRecognition'
+import { useReadingCheck } from '@/lib/hooks/useReadingCheck'
 import { useGuidedReading } from '@/lib/hooks/useGuidedReading'
+import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
+import { GrownUpSentenceScorer } from '@/components/games/GrownUpSentenceScorer'
+import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
 import { usePets } from '@/lib/hooks/usePets'
 import { Button, Card } from '@/components/ui'
 import { ReadingQuickPanel } from '@/components/reading'
@@ -22,7 +25,13 @@ import {
   PostSessionPetReaction,
 } from '@/components/word-quest'
 import { SentenceCard } from '../../../components/SentenceCard'
-import type { Pet, PetType, PetCustomization, SentenceWordResult } from '@/lib/types'
+import type {
+  Pet,
+  PetType,
+  PetCustomization,
+  SentenceAttemptResult,
+  SentenceWordResult,
+} from '@/lib/types'
 import { PET_MAPPINGS } from '@/lib/types'
 
 interface PageProps {
@@ -58,6 +67,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
     isSessionComplete,
     startSession,
     checkSentence,
+    scoreSentenceByGrownUp,
     advanceToNextSentence,
     skipSentence,
     endSession,
@@ -83,38 +93,50 @@ export default function PracticeSessionPage({ params }: PageProps) {
     return 'cat'
   }, [])
 
+  /**
+   * Feedback and pacing for a finished attempt, shared by the microphone and
+   * the grown-up routes — a sentence scored by hand celebrates the same way.
+   */
+  const applyAttempt = useCallback(
+    (result: SentenceAttemptResult | null) => {
+      if (!result) return
+
+      if (result.correct) successHaptic()
+      else warningHaptic()
+      setLastResult(result.correct ? 'correct' : 'incorrect')
+      setLastWordResults(result.wordResults)
+      setLastAccuracy(result.accuracy)
+      setIsAdvancing(true)
+
+      // Only auto-advance on 100% accuracy - otherwise wait for "Got it" tap
+      if (result.accuracy === 100) {
+        setTimeout(() => {
+          advanceToNextSentence()
+          setLastResult(null)
+          setLastWordResults([])
+          setLastAccuracy(0)
+          setIsAdvancing(false)
+        }, 2000)
+      }
+      // For < 100% accuracy, user must tap "Got it" to continue
+    },
+    [advanceToNextSentence]
+  )
+
   const handleSpeechResult = useCallback(
     async (text: string) => {
       if (!currentSentence || isAdvancing) return
-
-      const result = await checkSentence(text)
-      if (result) {
-        if (result.correct) successHaptic()
-        else warningHaptic()
-        setLastResult(result.correct ? 'correct' : 'incorrect')
-        setLastWordResults(result.wordResults)
-        setLastAccuracy(result.accuracy)
-        setIsAdvancing(true)
-
-        // Only auto-advance on 100% accuracy - otherwise wait for "Got it" tap
-        if (result.accuracy === 100) {
-          setTimeout(() => {
-            advanceToNextSentence()
-            setLastResult(null)
-            setLastWordResults([])
-            setLastAccuracy(0)
-            setIsAdvancing(false)
-          }, 2000)
-        }
-        // For < 100% accuracy, user must tap "Got it" to continue
-      }
+      applyAttempt(await checkSentence(text))
     },
-    [currentSentence, checkSentence, advanceToNextSentence, isAdvancing]
+    [currentSentence, checkSentence, isAdvancing, applyAttempt]
   )
 
-
+  const { speech, check, unlock } = useReadingCheck({
+    continuous: true,           // Enable continuous mode for slow readers
+    interimResults: true,       // Show words as they're spoken
+    onResult: handleSpeechResult,
+  })
   const {
-    isSupported,
     status,
     transcript,
     interimTranscript,
@@ -124,11 +146,15 @@ export default function PracticeSessionPage({ params }: PageProps) {
     finishListening,
     resetTranscript,
     error: speechError,
-  } = useSpeechRecognition({
-    continuous: true,           // Enable continuous mode for slow readers
-    interimResults: true,       // Show words as they're spoken
-    onResult: handleSpeechResult,
-  })
+  } = speech
+
+  const handleGrownUpScore = useCallback(
+    async (missedPositions: number[]) => {
+      if (!currentSentence || isAdvancing) return
+      applyAttempt(await scoreSentenceByGrownUp(missedPositions))
+    },
+    [currentSentence, scoreSentenceByGrownUp, isAdvancing, applyAttempt]
+  )
 
   // --- Reading guide -------------------------------------------------------
   // The same finger-controlled highlighter as the story reader, on the
@@ -253,7 +279,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
   // nav bar can't navigate away mid-session. Chrome returns on loading/error
   // screens and once the session is complete (the reward overlays cover the page).
   const isPlaying =
-    isSupported && !isLoading && !error && !!selectedChild && !isSessionComplete
+    !isLoading && !error && !!selectedChild && !isSessionComplete
   useImmersiveMode(isPlaying)
 
   // Quit confirm state + native back-button "request-quit" listener (only while playing).
@@ -264,25 +290,8 @@ export default function PracticeSessionPage({ params }: PageProps) {
     return null
   }
 
-  if (!isSupported) {
-    return (
-      <div className="max-w-4xl mx-auto px-4 py-12 text-center">
-        <Card className="py-8">
-          <div className="text-6xl mb-4">🎤</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-4">
-            Speech Recognition Not Available
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Your browser doesn&apos;t support speech recognition. Please try
-            using Chrome or Edge.
-          </p>
-          <Button onClick={() => router.push('/games/sentence-shenanigans')}>
-            Go Back
-          </Button>
-        </Card>
-      </div>
-    )
-  }
+  // No "Speech Recognition Not Available" dead end any more: a device without a
+  // microphone falls back to a grown-up marking words (see useAnswerCheckMode).
 
   if (isLoading) {
     return (
@@ -369,7 +378,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
 
       {/* Live reading feedback - shows words as child reads */}
       <div className="min-h-20 text-center mb-4">
-        {status === 'listening' && (
+        {check.micEnabled && status === 'listening' && (
           <div className="bg-blue-50 rounded-xl px-6 py-4 inline-block max-w-lg">
             <p className="text-gray-500 text-xs mb-1">I hear you saying:</p>
             <p className="font-medium text-gray-700 text-lg">
@@ -383,14 +392,14 @@ export default function PracticeSessionPage({ params }: PageProps) {
           </div>
         )}
 
-        {status !== 'listening' && transcript && (
+        {check.micEnabled && status !== 'listening' && transcript && (
           <div className="bg-gray-50 rounded-xl px-4 py-2 inline-block">
             <span className="text-gray-500 text-sm">I heard: </span>
             <span className="font-medium text-gray-700">&quot;{transcript}&quot;</span>
           </div>
         )}
 
-        {speechError && (
+        {check.micEnabled && speechError && (
           <span className="text-red-500 text-sm">{speechError}</span>
         )}
       </div>
@@ -402,7 +411,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
           <KidButton size="xl" variant="primary" onPress={handleGotIt} aria-label="Got it, continue">
             Got it!
           </KidButton>
-        ) : status === 'listening' ? (
+        ) : !check.micEnabled || check.isLoading ? null : status === 'listening' ? (
           // "Done Reading" button while listening in continuous mode
           <div className="flex flex-col items-center gap-4">
             <KidButton size="xl" variant="success" onPress={finishListening} aria-label="Done reading">
@@ -428,14 +437,43 @@ export default function PracticeSessionPage({ params }: PageProps) {
         )}
 
         <p className="text-gray-500 text-sm text-center max-w-xs">
-          {status === 'listening'
+          {check.micEnabled && status === 'listening'
             ? 'Read the sentence aloud. Tap "Done Reading" when finished!'
             : lastResult === 'correct' && lastAccuracy === 100
               ? 'Perfect! Moving to next sentence...'
               : lastResult !== null && lastAccuracy < 100
                 ? 'Look at the words in red and tap "Got it" when ready'
-                : 'Tap the microphone and read the sentence aloud'}
+                : check.micEnabled
+                  ? 'Tap the microphone and read the sentence aloud'
+                  : 'Read the sentence aloud to your grown-up'}
         </p>
+
+        {/* Grown-up scoring — word by word, which is finer-grained than the
+            transcript ever was, and the only route on a device the mic fails on. */}
+        {check.micTrouble && (
+          <MicTroubleNotice
+            onSwitch={check.switchToGrownUp}
+            onDismiss={check.dismissMicTrouble}
+          />
+        )}
+        {check.autoFellBack && <MicTroubleNotice automatic />}
+
+        {check.grownUpEnabled &&
+          !check.isLoading &&
+          currentSentence &&
+          lastResult === null && (
+            <GrownUpCheckBar
+              unlock={unlock}
+              hint="Tap the words they missed, then Done."
+              className="mx-auto"
+            >
+              <GrownUpSentenceScorer
+                sentence={currentSentence.sentence_text}
+                onSubmit={handleGrownUpScore}
+                disabled={isAdvancing || status === 'listening'}
+              />
+            </GrownUpCheckBar>
+          )}
 
         {/* The guide is only useful if she knows it moves. Shown once per
             sentence, before she starts reading, and never over the feedback. */}
