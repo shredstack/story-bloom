@@ -343,11 +343,14 @@ export default function WordRescuePracticePage() {
         />
       )}
 
-      {/* Grown-up scoring — the microphone's alternative, not its decoration. */}
       <div className="flex flex-col items-center gap-4 mt-6">
+        {/* What just went wrong with the mic — replaced by, never stacked with,
+            the escalation below. */}
         {check.micEnabled && !check.micTrouble && (
           <SpeechErrorNotice message={speech.error} />
         )}
+
+        {/* Grown-up scoring — the microphone's alternative, not its decoration. */}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

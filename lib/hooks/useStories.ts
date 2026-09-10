@@ -156,8 +156,13 @@ export function useStories(childId: string | undefined) {
  * that connection is fragile — locking the screen, backgrounding the app, or a
  * wifi/cellular handoff kills it. The ceiling below just makes that failure
  * arrive cleanly instead of hanging on a spinner forever.
+ *
+ * It MUST stay above `maxDuration` in `app/api/generate-story/route.ts` (300s).
+ * Abort first and the parent gets a generic client timeout for a story the
+ * server was still writing — and still billing for. Let the server hit its own
+ * ceiling first and the real error comes back instead. Raise both together.
  */
-const GENERATION_TIMEOUT_MS = 180_000
+const GENERATION_TIMEOUT_MS = 310_000
 
 /**
  * A network failure this fast means the request never reached the server, so no

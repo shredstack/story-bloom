@@ -399,7 +399,6 @@ export default function PracticeSessionPage({ params }: PageProps) {
             <span className="font-medium text-gray-700">&quot;{transcript}&quot;</span>
           </div>
         )}
-
       </div>
 
       {/* Controls */}
@@ -446,11 +445,14 @@ export default function PracticeSessionPage({ params }: PageProps) {
                   : 'Read the sentence aloud to your grown-up'}
         </p>
 
-        {/* Grown-up scoring — word by word, which is finer-grained than the
-            transcript ever was, and the only route on a device the mic fails on. */}
+        {/* What just went wrong with the mic — replaced by, never stacked with,
+            the escalation below. */}
         {check.micEnabled && !check.micTrouble && (
           <SpeechErrorNotice message={speechError} />
         )}
+
+        {/* Grown-up scoring — word by word, which is finer-grained than the
+            transcript ever was, and the only route on a device the mic fails on. */}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

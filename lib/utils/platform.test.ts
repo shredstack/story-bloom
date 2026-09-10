@@ -9,6 +9,12 @@ describe('isFireOS', () => {
     'Mozilla/5.0 (Linux; Android 9; KFONWI Build/PS7326; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/106.0.5249.126 Safari/537.36',
     // Older Kindle Fire, with the Silk-Accelerated token
     'Mozilla/5.0 (Linux; U; Android 4.0.3; en-us; KFTT Build/IML74K) AppleWebKit/535.19 Silk-Accelerated=true',
+    // Fire OS 5 (Chromium ~59) — the generation whose WebView can't parse a
+    // regex lookbehind, which is why FIRE_MODEL uses a consuming group.
+    'Mozilla/5.0 (Linux; U; Android 5.1.1; en-us; KFAUWI Build/LVY48F) AppleWebKit/537.36 (KHTML, like Gecko) Silk/59.3.1 like Chrome/59.0.3071.125 Safari/537.36',
+    // Model code at the very start of the string — the `^` half of the leading
+    // group, which has no other coverage.
+    'KFTRWI Build/PS7326 AppleWebKit/537.36',
   ]
 
   const OTHER_UAS = [

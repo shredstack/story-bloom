@@ -8,13 +8,20 @@
 /**
  * Amazon Fire tablet model codes: "KF" + uppercase letters (KFOT … KFTRWI).
  *
- * The lookbehind matters. A plain `\b` treats a hyphen as a boundary, so a
- * model like `SM-KFOO` would read as a Fire tablet and cost that whole session
- * paid server transcription for nothing. Fire codes appear either standalone
- * (`; KFTRPWI;`) or after the Build slash (`Build/KFTRWI`), never glued to a
- * preceding word.
+ * The leading group matters twice over.
+ *
+ * A plain `\b` treats a hyphen as a boundary, so a model like `SM-KFOO` would
+ * read as a Fire tablet and cost that whole session paid server transcription
+ * for nothing. Fire codes appear either standalone (`; KFTRPWI;`) or after the
+ * Build slash (`Build/KFTRWI`), never glued to a preceding word.
+ *
+ * And it has to be a consuming group rather than a lookbehind, which is
+ * Chromium 62+ / Safari 16.4+. Fire OS 5 WebViews are Chromium ~59 and iOS 15
+ * caps out below 16.4 — a regex *literal* can't be transpiled, so on exactly
+ * the hand-me-down tablets this detection exists for, the module would fail to
+ * parse and take every game page down with it.
  */
-const FIRE_MODEL = /(?<![A-Za-z-])KF[A-Z]{2,}\b/
+const FIRE_MODEL = /(?:^|[^A-Za-z-])KF[A-Z]{2,}\b/
 
 /** Amazon's Chromium fork. Appears as "Silk/109.4.4" or "Silk-Accelerated=true". */
 const SILK = /\bSilk[/-]/

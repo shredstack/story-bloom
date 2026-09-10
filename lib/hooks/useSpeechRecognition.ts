@@ -6,31 +6,32 @@ import { useAudioRecorder } from '@/lib/hooks/useAudioRecorder'
 import { isFireOSDevice } from '@/lib/utils/platform'
 
 /**
- * How long to wait for `onstart` before deciding this browser's speech
- * recognition is a shell with nothing behind it. A working engine fires in well
- * under a second; the extra headroom is for slow tablets, and the cost of being
- * wrong is only that we transcribe on the server instead.
- *
- * Only used when the mic permission is known-granted, which is the one case
- * where `onstart` has nothing legitimate left to wait on.
+ * How long to wait for `onstart` before treating an attempt as a miss, when the
+ * mic permission is known-granted and `onstart` has nothing legitimate left to
+ * wait on. A working engine fires in well under a second; the headroom is for
+ * low-end tablets, where the first recognition of a session can be genuinely
+ * slow to warm up — the same devices whose TTS engine takes a beat.
  */
-const RECOGNITION_START_TIMEOUT_MS = 3000
+const RECOGNITION_START_TIMEOUT_MS = 5000
 
 /**
  * The budget when we can't read the mic permission at all. Safari is the case
  * that matters: it supports `webkitSpeechRecognition` *and* refuses a
  * `microphone` permission query, so the state stays 'unknown' while its own
  * permission sheet is open. A grown-up hunting for the Allow button is not a
- * dead engine, and a 3s verdict would silently move the whole session onto paid
- * server transcription. Long budget here, and one timeout is never enough to
- * convict — see `startTimeoutStrikesRef`.
+ * dead engine.
  */
 const RECOGNITION_START_TIMEOUT_UNKNOWN_MS = 10000
 
 /**
- * How many consecutive misses it takes to write a device off, per signal.
- * Anything that can be caused by a human or a passing wifi glitch needs two;
- * a browser that reports `service-not-allowed` is telling us about itself.
+ * How many consecutive misses it takes to write a device off. Two, always —
+ * a slow warm-up, an invisible permission sheet and a passing wifi glitch all
+ * look identical to a dead engine on the first miss, and the costs are lopsided:
+ * a wrong latch moves the whole session onto paid server transcription
+ * invisibly, while a second strike costs the child one more tap.
+ *
+ * Errors the browser reports about *itself* (`service-not-allowed`) skip this —
+ * there's nothing ambiguous left to wait for.
  */
 const UNCERTAIN_SIGNAL_STRIKES = 2
 
@@ -53,6 +54,13 @@ const FATAL_RECOGNITION_ERRORS = new Set([
  * and only counts them while the browser believes it is online.
  */
 const AMBIGUOUS_RECOGNITION_ERRORS = new Set(['network'])
+
+/**
+ * Shown when recognition never started but we aren't ready to write the device
+ * off yet. The alternative is a button that did nothing for five seconds and
+ * said nothing about it, which is the least actionable thing a mic can do.
+ */
+const START_FAILED_MESSAGE = "The microphone didn't start. Tap it to try again!"
 
 /**
  * Slack between aborting recognition and asking for the mic again. Long enough
@@ -190,6 +198,10 @@ function useWebSpeechRecognition(
   const isUnavailableRef = useRef(false)
   /** Set by the setup effect, which owns the recognition object to abort. */
   const declareUnavailableRef = useRef<(reason: SpeechUnavailableReason) => void>(() => {})
+  /** Ditto: end one attempt without writing the device off. */
+  const abandonAttemptRef = useRef<() => void>(() => {})
+  /** True while our own `abort()` is in flight, so its 'aborted' isn't re-reported. */
+  const selfAbortedRef = useRef(false)
   /** Mic permission state, so the watchdog never times an open prompt. */
   const micPermissionRef = useRef<PermissionState | 'unknown'>('unknown')
   /** Consecutive `onstart` misses; reset the moment recognition actually starts. */
@@ -211,20 +223,25 @@ function useWebSpeechRecognition(
     let permissionStatus: PermissionStatus | null = null
     let cancelled = false
 
-    navigator.permissions
-      ?.query({ name: 'microphone' as PermissionName })
-      .then((result) => {
-        if (cancelled) return
-        permissionStatus = result
-        micPermissionRef.current = result.state
-        result.onchange = () => {
+    // Not every browser exposes the microphone permission: Safari and Firefox
+    // reject the query, and older engines throw synchronously on a name they
+    // don't recognise — which would escape this effect uncaught. 'unknown' is
+    // the safe read: the watchdog still arms, but on the long budget.
+    try {
+      navigator.permissions
+        ?.query({ name: 'microphone' as PermissionName })
+        .then((result) => {
+          if (cancelled) return
+          permissionStatus = result
           micPermissionRef.current = result.state
-        }
-      })
-      // Not every browser exposes the microphone permission (Safari and Firefox
-      // reject the query). 'unknown' is the safe read: the watchdog still arms,
-      // but on the long budget and never on a single miss.
-      .catch(() => {})
+          result.onchange = () => {
+            micPermissionRef.current = result.state
+          }
+        })
+        .catch(() => {})
+    } catch {
+      // Permission API unavailable or the name is unrecognised — stay 'unknown'.
+    }
 
     return () => {
       cancelled = true
@@ -283,6 +300,31 @@ function useWebSpeechRecognition(
         optionsRef.current.onUnavailable?.(wasListening, reason)
       }
       declareUnavailableRef.current = declareUnavailable
+
+      // End this attempt and say so, without writing the device off. The latch
+      // and the rescue of the current tap are separate decisions: we may not
+      // know yet whether this browser is broken, but the child is owed an
+      // answer either way.
+      const abandonAttempt = () => {
+        clearStartWatchdog()
+        if (listeningTimeoutRef.current) {
+          clearTimeout(listeningTimeoutRef.current)
+          listeningTimeoutRef.current = null
+        }
+        isListeningIntentRef.current = false
+        // abort() comes back through onerror as 'aborted' — the same failure a
+        // second time, and two reports is exactly the escalation threshold.
+        selfAbortedRef.current = true
+        try {
+          recognition.abort()
+        } catch {
+          // Nothing to abort, which is consistent with never having started.
+        }
+        setStatus('idle')
+        setError(START_FAILED_MESSAGE)
+        optionsRef.current.onError?.(START_FAILED_MESSAGE)
+      }
+      abandonAttemptRef.current = abandonAttempt
 
       recognition.onstart = () => {
         clearStartWatchdog()
@@ -361,6 +403,12 @@ function useWebSpeechRecognition(
         // Everything after this point belongs to an implementation we've already
         // walked away from — including the 'aborted' that our own abort() raises.
         if (isUnavailableRef.current) return
+
+        // Same for the abort that ends an abandoned attempt: already reported.
+        if (selfAbortedRef.current && event.error === 'aborted') {
+          selfAbortedRef.current = false
+          return
+        }
 
         clearStartWatchdog()
 
@@ -458,28 +506,34 @@ function useWebSpeechRecognition(
       abortRetryCountRef.current = 0
 
       // Arm the watchdog before starting, so a start() that resolves to silence
-      // is caught as well as one that throws. What a timeout *proves* depends
-      // entirely on what we know about the mic permission:
+      // is caught as well as one that throws. How long to wait depends on what
+      // we know about the mic permission:
       //
       //   'prompt'  — a sheet is open and the wait is the grown-up's. Not armed.
-      //   'granted' — nothing legitimate left to wait on, so one miss convicts.
+      //   'granted' — nothing legitimate left to wait on. Short budget.
       //   'unknown' — the browser won't answer a permission query (Safari), so
-      //               an invisible prompt may be open. Long budget, and it takes
-      //               a second consecutive miss to write the device off.
+      //               an invisible sheet may be open. Long budget.
       //
-      // Getting that last case wrong is expensive and invisible: a slow tap
-      // would move the rest of the session onto paid server transcription.
+      // What a miss *means* doesn't depend on that, though: never a verdict on
+      // its own. The first tells the child to try again, the second writes the
+      // device off — see UNCERTAIN_SIGNAL_STRIKES.
+      selfAbortedRef.current = false
       clearStartWatchdog()
       const permission = micPermissionRef.current
       if (permission !== 'prompt') {
-        const certain = permission === 'granted'
+        const budget =
+          permission === 'granted'
+            ? RECOGNITION_START_TIMEOUT_MS
+            : RECOGNITION_START_TIMEOUT_UNKNOWN_MS
         startWatchdogRef.current = setTimeout(() => {
           startWatchdogRef.current = null
           startTimeoutStrikesRef.current += 1
-          if (certain || startTimeoutStrikesRef.current >= UNCERTAIN_SIGNAL_STRIKES) {
+          if (startTimeoutStrikesRef.current >= UNCERTAIN_SIGNAL_STRIKES) {
             declareUnavailableRef.current('start-timeout')
+          } else {
+            abandonAttemptRef.current()
           }
-        }, certain ? RECOGNITION_START_TIMEOUT_MS : RECOGNITION_START_TIMEOUT_UNKNOWN_MS)
+        }, budget)
       }
 
       try {

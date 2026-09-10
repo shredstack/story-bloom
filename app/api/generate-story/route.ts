@@ -155,8 +155,14 @@ export async function POST(request: NextRequest) {
     const missingFields: string[] = []
     if (!childName) missingFields.push('childName')
     // Missing, not falsy: this block exists to be diagnosable, and reporting a
-    // present-but-zero age as absent is the opposite of that.
-    if (typeof childAge !== 'number' || Number.isNaN(childAge)) missingFields.push('childAge')
+    // present-but-zero age as absent is the opposite of that. Numeric strings
+    // are still accepted — the old `!childAge` check took them, and tightening
+    // a live API is not what this change is for — but an age that can't be a
+    // child's is rejected rather than interpolated into the prompt.
+    const age = typeof childAge === 'string' ? Number(childAge) : childAge
+    if (typeof age !== 'number' || !Number.isFinite(age) || age <= 0) {
+      missingFields.push('childAge')
+    }
     if (!readingLevel) missingFields.push('readingLevel')
     if (!favoriteThings?.length) missingFields.push('favoriteThings')
 
@@ -202,7 +208,7 @@ export async function POST(request: NextRequest) {
     const prompt = `You are a creative children's story writer. Generate an engaging, age-appropriate story for a child with the following profile:
 
 - Name: ${childName}
-- Age: ${childAge}
+- Age: ${age}
 - Reading Level: ${readingLevel}
 - Interests: ${favoriteThings.join(', ')}
 ${parentSummary ? `- About the child: ${parentSummary}` : ''}
@@ -347,4 +353,6 @@ Respond in this exact JSON format:
   }
 }
 
+// Paired with GENERATION_TIMEOUT_MS in `lib/hooks/useStories.ts`, which must
+// stay above this so the server's own error wins the race. Raise both together.
 export const maxDuration = 300
