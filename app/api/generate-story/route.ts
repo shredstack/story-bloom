@@ -3,6 +3,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
+// Explicit because the illustration path base64-encodes with `Buffer`, which
+// does not exist on the edge runtime. Matches the other AI routes.
+export const runtime = 'nodejs'
+
 interface PhysicalCharacteristics {
   skinTone: string | null
   hairColor: string | null
@@ -146,8 +150,28 @@ export async function POST(request: NextRequest) {
     const body: RequestBody = await request.json()
     const { childName, childAge, readingLevel, favoriteThings, parentSummary, customPrompt, sourceIllustration, physicalCharacteristics } = body
 
-    if (!childName || !childAge || !readingLevel || !favoriteThings?.length) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    // Name each missing field: a bare "Missing required fields" makes a 400 in the
+    // logs impossible to trace back to the profile that caused it.
+    const missingFields: string[] = []
+    if (!childName) missingFields.push('childName')
+    // Missing, not falsy: this block exists to be diagnosable, and reporting a
+    // present-but-zero age as absent is the opposite of that. Numeric strings
+    // are still accepted — the old `!childAge` check took them, and tightening
+    // a live API is not what this change is for — but an age that can't be a
+    // child's is rejected rather than interpolated into the prompt.
+    const age = typeof childAge === 'string' ? Number(childAge) : childAge
+    if (typeof age !== 'number' || !Number.isFinite(age) || age <= 0) {
+      missingFields.push('childAge')
+    }
+    if (!readingLevel) missingFields.push('readingLevel')
+    if (!favoriteThings?.length) missingFields.push('favoriteThings')
+
+    if (missingFields.length > 0) {
+      console.error('generate-story rejected request, missing fields:', missingFields)
+      return NextResponse.json(
+        { error: `Missing required fields: ${missingFields.join(', ')}` },
+        { status: 400 }
+      )
     }
 
     // Server-only environment variables (no VITE_ prefix)
@@ -184,7 +208,7 @@ export async function POST(request: NextRequest) {
     const prompt = `You are a creative children's story writer. Generate an engaging, age-appropriate story for a child with the following profile:
 
 - Name: ${childName}
-- Age: ${childAge}
+- Age: ${age}
 - Reading Level: ${readingLevel}
 - Interests: ${favoriteThings.join(', ')}
 ${parentSummary ? `- About the child: ${parentSummary}` : ''}
@@ -223,16 +247,6 @@ Respond in this exact JSON format:
   ]
 }`
 
-    // Helper function to convert ArrayBuffer to base64
-    function arrayBufferToBase64(buffer: ArrayBuffer): string {
-      const bytes = new Uint8Array(buffer)
-      let binary = ''
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i])
-      }
-      return btoa(binary)
-    }
-
     // Build the message content - include image if sourceIllustration is provided
     let messageContent: Anthropic.MessageCreateParams['messages'][0]['content']
 
@@ -244,7 +258,7 @@ Respond in this exact JSON format:
           throw new Error('Failed to fetch illustration')
         }
         const imageBuffer = await imageResponse.arrayBuffer()
-        const base64Image = arrayBufferToBase64(imageBuffer)
+        const base64Image = Buffer.from(imageBuffer).toString('base64')
 
         // Determine media type from content-type header or URL
         const contentType = imageResponse.headers.get('content-type') || 'image/jpeg'
@@ -339,4 +353,6 @@ Respond in this exact JSON format:
   }
 }
 
+// Paired with GENERATION_TIMEOUT_MS in `lib/hooks/useStories.ts`, which must
+// stay above this so the server's own error wins the race. Raise both together.
 export const maxDuration = 300

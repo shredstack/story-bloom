@@ -3,6 +3,71 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { SpeechRecognitionStatus } from '@/lib/types'
 import { useAudioRecorder } from '@/lib/hooks/useAudioRecorder'
+import { isFireOSDevice } from '@/lib/utils/platform'
+
+/**
+ * How long to wait for `onstart` before treating an attempt as a miss, when the
+ * mic permission is known-granted and `onstart` has nothing legitimate left to
+ * wait on. A working engine fires in well under a second; the headroom is for
+ * low-end tablets, where the first recognition of a session can be genuinely
+ * slow to warm up — the same devices whose TTS engine takes a beat.
+ */
+const RECOGNITION_START_TIMEOUT_MS = 5000
+
+/**
+ * The budget when we can't read the mic permission at all. Safari is the case
+ * that matters: it supports `webkitSpeechRecognition` *and* refuses a
+ * `microphone` permission query, so the state stays 'unknown' while its own
+ * permission sheet is open. A grown-up hunting for the Allow button is not a
+ * dead engine.
+ */
+const RECOGNITION_START_TIMEOUT_UNKNOWN_MS = 10000
+
+/**
+ * How many consecutive misses it takes to write a device off. Two, always —
+ * a slow warm-up, an invisible permission sheet and a passing wifi glitch all
+ * look identical to a dead engine on the first miss, and the costs are lopsided:
+ * a wrong latch moves the whole session onto paid server transcription
+ * invisibly, while a second strike costs the child one more tap.
+ *
+ * Errors the browser reports about *itself* (`service-not-allowed`) skip this —
+ * there's nothing ambiguous left to wait for.
+ */
+const UNCERTAIN_SIGNAL_STRIKES = 2
+
+/**
+ * Recognition errors that mean "this device will never do speech recognition",
+ * as opposed to "that attempt didn't work". Chromium forks without Google
+ * services report `service-not-allowed` here forever.
+ */
+const FATAL_RECOGNITION_ERRORS = new Set([
+  'service-not-allowed',
+  'language-not-supported',
+])
+
+/**
+ * `network` is the ambiguous one: a Chromium fork with no speech backend raises
+ * it every single time, but so does a desktop browser whose wifi dropped for a
+ * second. The fallback path POSTs to `/api/speech/transcribe` and needs that
+ * same network, so latching on a hiccup trades a working implementation for one
+ * that is equally broken. Requires `UNCERTAIN_SIGNAL_STRIKES` consecutive hits,
+ * and only counts them while the browser believes it is online.
+ */
+const AMBIGUOUS_RECOGNITION_ERRORS = new Set(['network'])
+
+/**
+ * Shown when recognition never started but we aren't ready to write the device
+ * off yet. The alternative is a button that did nothing for five seconds and
+ * said nothing about it, which is the least actionable thing a mic can do.
+ */
+const START_FAILED_MESSAGE = "The microphone didn't start. Tap it to try again!"
+
+/**
+ * Slack between aborting recognition and asking for the mic again. Long enough
+ * for the engine to let go of the device, short enough that a child mid-tap
+ * reads it as the button being a beat slow.
+ */
+const MIC_HANDOFF_DELAY_MS = 150
 
 // Web Speech API type definitions
 interface SpeechRecognitionResult {
@@ -78,13 +143,37 @@ export interface UseSpeechRecognitionReturn {
 }
 
 /**
- * Web Speech API implementation (Chrome/Edge desktop, Android WebView). This is
- * the original behavior, unchanged — including iOS-Safari abort retries and the
+ * Why the web implementation was written off. Logged rather than shown: a latch
+ * is invisible by design, so without this you can't tell "Fire OS detection is
+ * working" from "we're paying for Whisper on a device that was fine".
+ */
+type SpeechUnavailableReason =
+  | 'fire-os'
+  | 'start-threw'
+  | 'start-timeout'
+  | `fatal:${string}`
+
+interface WebSpeechOptions extends UseSpeechRecognitionOptions {
+  /**
+   * This device has `webkitSpeechRecognition` but it provably does not work —
+   * it threw on start, never started, or failed fatally. The caller should stop
+   * using this implementation for the rest of the session. `wasListening` is
+   * true when a child was mid-tap, so the caller can hand the attempt on rather
+   * than dropping it.
+   */
+  onUnavailable?: (wasListening: boolean, reason: SpeechUnavailableReason) => void
+}
+
+/**
+ * Web Speech API implementation (Chrome/Edge desktop, Android WebView), for
+ * devices where it genuinely works — including iOS-Safari abort retries and the
  * continuous/interim modes. `isSupported` reflects whether `webkitSpeechRecognition`
  * actually exists, which is FALSE in iOS WKWebView (the native shell).
+ *
+ * Existing is not the same as working, though: see `onUnavailable`.
  */
 function useWebSpeechRecognition(
-  options: UseSpeechRecognitionOptions = {}
+  options: WebSpeechOptions = {}
 ): UseSpeechRecognitionReturn {
   const [isSupported, setIsSupported] = useState(false)
   const [status, setStatus] = useState<SpeechRecognitionStatus>('idle')
@@ -103,6 +192,62 @@ function useWebSpeechRecognition(
   const finalTranscriptRef = useRef('')
   // Timeout to auto-stop listening if no result is received
   const listeningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Watchdog for `onstart` — see RECOGNITION_START_TIMEOUT_MS
+  const startWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Latched once this device has proved it can't do recognition at all. */
+  const isUnavailableRef = useRef(false)
+  /** Set by the setup effect, which owns the recognition object to abort. */
+  const declareUnavailableRef = useRef<(reason: SpeechUnavailableReason) => void>(() => {})
+  /** Ditto: end one attempt without writing the device off. */
+  const abandonAttemptRef = useRef<() => void>(() => {})
+  /** True while our own `abort()` is in flight, so its 'aborted' isn't re-reported. */
+  const selfAbortedRef = useRef(false)
+  /** Mic permission state, so the watchdog never times an open prompt. */
+  const micPermissionRef = useRef<PermissionState | 'unknown'>('unknown')
+  /** Consecutive `onstart` misses; reset the moment recognition actually starts. */
+  const startTimeoutStrikesRef = useRef(0)
+  /** Consecutive `network` errors; reset by any successful start. */
+  const networkErrorStrikesRef = useRef(0)
+
+  const clearStartWatchdog = useCallback(() => {
+    if (startWatchdogRef.current) {
+      clearTimeout(startWatchdogRef.current)
+      startWatchdogRef.current = null
+    }
+  }, [])
+
+  // A pending permission prompt blocks `onstart` for as long as the grown-up
+  // takes to tap Allow, which would look exactly like a dead engine. Track the
+  // state so the watchdog can stand down while a decision is outstanding.
+  useEffect(() => {
+    let permissionStatus: PermissionStatus | null = null
+    let cancelled = false
+
+    // Not every browser exposes the microphone permission: Safari and Firefox
+    // reject the query, and older engines throw synchronously on a name they
+    // don't recognise — which would escape this effect uncaught. 'unknown' is
+    // the safe read: the watchdog still arms, but on the long budget.
+    try {
+      navigator.permissions
+        ?.query({ name: 'microphone' as PermissionName })
+        .then((result) => {
+          if (cancelled) return
+          permissionStatus = result
+          micPermissionRef.current = result.state
+          result.onchange = () => {
+            micPermissionRef.current = result.state
+          }
+        })
+        .catch(() => {})
+    } catch {
+      // Permission API unavailable or the name is unrecognised — stay 'unknown'.
+    }
+
+    return () => {
+      cancelled = true
+      if (permissionStatus) permissionStatus.onchange = null
+    }
+  }, [])
 
   useEffect(() => {
     // Access the Web Speech API from window
@@ -131,7 +276,62 @@ function useWebSpeechRecognition(
       recognition.interimResults = optionsRef.current.interimResults ?? false
       recognition.lang = 'en-US'
 
+      // Give up on this implementation for good and hand the attempt back. No
+      // error is set: the caller has a working fallback, so the child should
+      // see a mic that's a beat slow, not one that failed.
+      const declareUnavailable = (reason: SpeechUnavailableReason) => {
+        if (isUnavailableRef.current) return
+        isUnavailableRef.current = true
+        clearStartWatchdog()
+        if (listeningTimeoutRef.current) {
+          clearTimeout(listeningTimeoutRef.current)
+          listeningTimeoutRef.current = null
+        }
+
+        const wasListening = isListeningIntentRef.current
+        isListeningIntentRef.current = false
+        try {
+          recognition.abort()
+        } catch {
+          // Already dead — which is the whole reason we're here.
+        }
+        setStatus('idle')
+        setError(null)
+        optionsRef.current.onUnavailable?.(wasListening, reason)
+      }
+      declareUnavailableRef.current = declareUnavailable
+
+      // End this attempt and say so, without writing the device off. The latch
+      // and the rescue of the current tap are separate decisions: we may not
+      // know yet whether this browser is broken, but the child is owed an
+      // answer either way.
+      const abandonAttempt = () => {
+        clearStartWatchdog()
+        if (listeningTimeoutRef.current) {
+          clearTimeout(listeningTimeoutRef.current)
+          listeningTimeoutRef.current = null
+        }
+        isListeningIntentRef.current = false
+        // abort() comes back through onerror as 'aborted' — the same failure a
+        // second time, and two reports is exactly the escalation threshold.
+        selfAbortedRef.current = true
+        try {
+          recognition.abort()
+        } catch {
+          // Nothing to abort, which is consistent with never having started.
+        }
+        setStatus('idle')
+        setError(START_FAILED_MESSAGE)
+        optionsRef.current.onError?.(START_FAILED_MESSAGE)
+      }
+      abandonAttemptRef.current = abandonAttempt
+
       recognition.onstart = () => {
+        clearStartWatchdog()
+        // Recognition really started, so whatever the previous misses were —
+        // an open permission sheet, a wifi blip — they weren't this device.
+        startTimeoutStrikesRef.current = 0
+        networkErrorStrikesRef.current = 0
         setStatus('listening')
         setError(null)
         abortRetryCountRef.current = 0
@@ -200,6 +400,42 @@ function useWebSpeechRecognition(
       }
 
       recognition.onerror = (event: ISpeechRecognitionErrorEvent) => {
+        // Everything after this point belongs to an implementation we've already
+        // walked away from — including the 'aborted' that our own abort() raises.
+        if (isUnavailableRef.current) return
+
+        // Same for the abort that ends an abandoned attempt: already reported.
+        if (selfAbortedRef.current && event.error === 'aborted') {
+          selfAbortedRef.current = false
+          return
+        }
+
+        clearStartWatchdog()
+
+        // No amount of retrying fixes a browser with no speech service behind
+        // the API. Hand the attempt to the server-transcription path instead of
+        // telling a six-year-old about the network.
+        if (FATAL_RECOGNITION_ERRORS.has(event.error)) {
+          declareUnavailable(`fatal:${event.error}`)
+          return
+        }
+
+        // `network` only convicts on a repeat offence, and never while the
+        // device knows it is offline — that's a wifi problem, not a device one,
+        // and the fallback needs the network just as much.
+        if (AMBIGUOUS_RECOGNITION_ERRORS.has(event.error)) {
+          const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+          if (!offline) {
+            networkErrorStrikesRef.current += 1
+            if (networkErrorStrikesRef.current >= UNCERTAIN_SIGNAL_STRIKES) {
+              declareUnavailable(`fatal:${event.error}`)
+              return
+            }
+          }
+          // Otherwise fall through and report it as the transient error it
+          // probably is, which is also what feeds the mic-trouble escalation.
+        }
+
         // On iOS/iPadOS, auto-retry on 'aborted' errors (common issue with Safari)
         if (isIOS && event.error === 'aborted' && isListeningIntentRef.current) {
           if (abortRetryCountRef.current < maxAbortRetries) {
@@ -229,6 +465,8 @@ function useWebSpeechRecognition(
       }
 
       recognition.onend = () => {
+        if (isUnavailableRef.current) return
+
         // In continuous mode, auto-restart if user still intends to listen
         if (optionsRef.current.continuous && isListeningIntentRef.current) {
           try {
@@ -252,12 +490,13 @@ function useWebSpeechRecognition(
     return () => {
       isListeningIntentRef.current = false
       if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current)
+      clearStartWatchdog()
       recognitionRef.current?.abort()
     }
-  }, [])
+  }, [clearStartWatchdog])
 
   const startListening = useCallback(() => {
-    if (recognitionRef.current && status !== 'listening') {
+    if (recognitionRef.current && status !== 'listening' && !isUnavailableRef.current) {
       setError(null)
       setTranscript('')
       setInterimTranscript('')
@@ -265,13 +504,52 @@ function useWebSpeechRecognition(
       finalTranscriptRef.current = ''
       isListeningIntentRef.current = true
       abortRetryCountRef.current = 0
+
+      // Arm the watchdog before starting, so a start() that resolves to silence
+      // is caught as well as one that throws. How long to wait depends on what
+      // we know about the mic permission:
+      //
+      //   'prompt'  — a sheet is open and the wait is the grown-up's. Not armed.
+      //   'granted' — nothing legitimate left to wait on. Short budget.
+      //   'unknown' — the browser won't answer a permission query (Safari), so
+      //               an invisible sheet may be open. Long budget.
+      //
+      // What a miss *means* doesn't depend on that, though: never a verdict on
+      // its own. The first tells the child to try again, the second writes the
+      // device off — see UNCERTAIN_SIGNAL_STRIKES.
+      selfAbortedRef.current = false
+      clearStartWatchdog()
+      const permission = micPermissionRef.current
+      if (permission !== 'prompt') {
+        const budget =
+          permission === 'granted'
+            ? RECOGNITION_START_TIMEOUT_MS
+            : RECOGNITION_START_TIMEOUT_UNKNOWN_MS
+        startWatchdogRef.current = setTimeout(() => {
+          startWatchdogRef.current = null
+          startTimeoutStrikesRef.current += 1
+          if (startTimeoutStrikesRef.current >= UNCERTAIN_SIGNAL_STRIKES) {
+            declareUnavailableRef.current('start-timeout')
+          } else {
+            abandonAttemptRef.current()
+          }
+        }, budget)
+      }
+
       try {
         recognitionRef.current.start()
-      } catch {
-        // Recognition might already be running
+      } catch (err) {
+        // `InvalidStateError` is the benign one: recognition is already running,
+        // so `onstart` has fired and the watchdog can stand down. Anything else
+        // is a browser that took the call and cannot honour it — which is how a
+        // mic button ends up doing nothing at all, silently, forever.
+        clearStartWatchdog()
+        if ((err as DOMException)?.name !== 'InvalidStateError') {
+          declareUnavailableRef.current('start-threw')
+        }
       }
     }
-  }, [status])
+  }, [status, clearStartWatchdog])
 
   const stopListening = useCallback(() => {
     if (recognitionRef.current) {
@@ -280,10 +558,11 @@ function useWebSpeechRecognition(
         clearTimeout(listeningTimeoutRef.current)
         listeningTimeoutRef.current = null
       }
+      clearStartWatchdog()
       recognitionRef.current.stop()
       setStatus('idle')
     }
-  }, [])
+  }, [clearStartWatchdog])
 
   const resetTranscript = useCallback(() => {
     setTranscript('')
@@ -293,12 +572,14 @@ function useWebSpeechRecognition(
     setStatus('idle')
     setError(null)
     isListeningIntentRef.current = false
-  }, [])
+    clearStartWatchdog()
+  }, [clearStartWatchdog])
 
   // For continuous mode: finalize and process the complete transcript
   const finishListening = useCallback(() => {
     if (recognitionRef.current) {
       isListeningIntentRef.current = false
+      clearStartWatchdog()
       recognitionRef.current.stop()
 
       // Combine final + interim for complete transcript
@@ -320,7 +601,7 @@ function useWebSpeechRecognition(
       setFinalTranscript('')
       finalTranscriptRef.current = ''
     }
-  }, [interimTranscript])
+  }, [interimTranscript, clearStartWatchdog])
 
   return {
     isSupported,
@@ -337,9 +618,10 @@ function useWebSpeechRecognition(
 }
 
 /**
- * Fallback implementation for platforms WITHOUT the Web Speech API — primarily
- * iOS WKWebView (the native StoryBloom shell), and any browser missing
- * `webkitSpeechRecognition`. It records audio with `useAudioRecorder` and POSTs it
+ * Fallback implementation for platforms that can't use the Web Speech API —
+ * iOS WKWebView (the native StoryBloom shell) and any browser missing
+ * `webkitSpeechRecognition`, plus the browsers that *have* it and can't make it
+ * work (Amazon Fire tablets). It records audio with `useAudioRecorder` and POSTs it
  * to `/api/speech/transcribe` (OpenAI Whisper), then surfaces the transcript
  * through the exact same `UseSpeechRecognitionReturn` contract.
  *
@@ -452,9 +734,30 @@ function useRecorderSpeechRecognition(
 
 /**
  * Public speech-recognition hook. Unchanged contract — every game's call site
- * keeps working. Picks the implementation by capability: native `webkitSpeechRecognition`
- * where it exists (Android WebView, desktop Chrome/Edge), and the Whisper-backed
- * audio-recorder fallback everywhere it doesn't (notably iOS WKWebView).
+ * keeps working. Picks the implementation by capability: native
+ * `webkitSpeechRecognition` where it works (Android WebView, desktop
+ * Chrome/Edge), and the Whisper-backed audio-recorder fallback everywhere else
+ * (iOS WKWebView, Amazon Fire tablets).
+ *
+ * "Where it works" is doing real work in that sentence. Feature detection alone
+ * used to decide this, and it is wrong on Fire OS: Silk is Chromium, so
+ * `webkitSpeechRecognition` is defined, but Amazon ships no Google services, so
+ * there is no speech backend behind it. The child taps the mic and *nothing
+ * happens* — no result, no error, no state change. Same shape as the missing
+ * TTS engine that `useWordSpeech` works around.
+ *
+ * So the choice has two additional inputs beyond `isSupported`, both latched for
+ * the session once they fire:
+ *
+ *  1. The user agent, for Fire OS — known-bad devices skip the discovery cost
+ *     entirely rather than spending the first tap on it.
+ *  2. `onUnavailable` from the web implementation, for everything else that
+ *     behaves this way: a start that throws, a start that never starts, or a
+ *     fatal `service-not-allowed`. Signals a human or a flaky connection could
+ *     have produced — a start timeout on a browser that hides its permission
+ *     state, a lone `network` error — take two strikes first. The in-flight
+ *     attempt is handed to the recorder rather than dropped, so the tap that
+ *     discovered the problem still gets the child an answer.
  *
  * Both internal hooks are invoked unconditionally (Rules of Hooks); only the
  * selected one is ever *started*, so the other stays inert.
@@ -462,24 +765,78 @@ function useRecorderSpeechRecognition(
 export function useSpeechRecognition(
   options: UseSpeechRecognitionOptions = {}
 ): UseSpeechRecognitionReturn {
-  const web = useWebSpeechRecognition(options)
+  const [webSpeechUsable, setWebSpeechUsable] = useState(true)
+  // Kept current by an effect below, so the handoff always reaches the live
+  // recorder without writing to a ref during render.
+  const recorderRef = useRef<UseSpeechRecognitionReturn | null>(null)
+  const handoffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (isFireOSDevice()) {
+      console.warn('[speech] falling back to server transcription: fire-os')
+      setWebSpeechUsable(false)
+    }
+  }, [])
+
+  const handleUnavailable = useCallback(
+    (wasListening: boolean, reason: SpeechUnavailableReason) => {
+      console.warn(`[speech] falling back to server transcription: ${reason}`)
+      setWebSpeechUsable(false)
+      if (!wasListening) return
+
+      // The recognition engine was just aborted and may not have released the
+      // mic yet; on some Android/Fire WebViews an immediate `getUserMedia` loses
+      // the race and the tap that found the problem dies with it. One tick of
+      // slack costs the child nothing and avoids the contention entirely.
+      if (handoffTimerRef.current) clearTimeout(handoffTimerRef.current)
+      handoffTimerRef.current = setTimeout(() => {
+        handoffTimerRef.current = null
+        recorderRef.current?.startListening()
+      }, MIC_HANDOFF_DELAY_MS)
+    },
+    []
+  )
+
+  const web = useWebSpeechRecognition({
+    ...options,
+    onUnavailable: handleUnavailable,
+  })
   const recorder = useRecorderSpeechRecognition(options)
-  return web.isSupported ? web : recorder
+
+  useEffect(() => {
+    recorderRef.current = recorder
+  })
+
+  // A pending handoff must never start a microphone on a page the child has
+  // already left.
+  useEffect(() => {
+    return () => {
+      if (handoffTimerRef.current) clearTimeout(handoffTimerRef.current)
+    }
+  }, [])
+
+  return webSpeechUsable && web.isSupported ? web : recorder
 }
 
+/**
+ * These are read by the child, not by a grown-up: `SpeechErrorNotice` puts them
+ * on the game screen. So they say what happened and what to do about it in
+ * words a six-year-old can decode, and hand anything needing a settings screen
+ * to a grown-up rather than describing it.
+ */
 function getErrorMessage(error: string): string {
   switch (error) {
     case 'no-speech':
       return "I didn't hear anything. Try again!"
     case 'audio-capture':
-      return 'Microphone not found. Please check your microphone.'
+      return "I can't find the microphone. Ask a grown-up for help!"
     case 'not-allowed':
-      return 'Microphone access denied. Please allow microphone access.'
+      return 'The microphone is turned off. Ask a grown-up to turn it on!'
     case 'network':
-      return 'Network error. Please check your connection.'
+      return "I can't connect right now. Try again in a moment!"
     case 'aborted':
-      return 'Listening was cancelled.'
+      return 'I stopped listening. Tap the microphone to try again!'
     default:
-      return 'Something went wrong. Please try again.'
+      return 'Something went wrong. Tap the microphone to try again!'
   }
 }

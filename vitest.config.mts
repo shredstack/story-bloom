@@ -2,7 +2,8 @@ import { defineConfig } from 'vitest/config'
 import { fileURLToPath } from 'node:url'
 
 /**
- * Scoped deliberately to the pure modules: lib/reading/* and lib/games/*.
+ * Scoped deliberately to the pure modules: lib/reading/*, lib/games/* and
+ * lib/utils/*.
  *
  * Those modules are pure — no React, no DOM, they take plain rect objects or
  * plain strings rather than elements — which is exactly what makes this a
@@ -13,7 +14,11 @@ import { fileURLToPath } from 'node:url'
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['lib/reading/*.test.ts', 'lib/games/*.test.ts'],
+    include: [
+      'lib/reading/*.test.ts',
+      'lib/games/*.test.ts',
+      'lib/utils/*.test.ts',
+    ],
   },
   resolve: {
     alias: {

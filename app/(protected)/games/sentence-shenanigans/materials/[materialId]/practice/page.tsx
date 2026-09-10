@@ -14,6 +14,7 @@ import { useGuidedReading } from '@/lib/hooks/useGuidedReading'
 import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
 import { GrownUpSentenceScorer } from '@/components/games/GrownUpSentenceScorer'
 import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
+import { SpeechErrorNotice } from '@/components/games/SpeechErrorNotice'
 import { usePets } from '@/lib/hooks/usePets'
 import { Button, Card } from '@/components/ui'
 import { ReadingQuickPanel } from '@/components/reading'
@@ -398,10 +399,6 @@ export default function PracticeSessionPage({ params }: PageProps) {
             <span className="font-medium text-gray-700">&quot;{transcript}&quot;</span>
           </div>
         )}
-
-        {check.micEnabled && speechError && (
-          <span className="text-red-500 text-sm">{speechError}</span>
-        )}
       </div>
 
       {/* Controls */}
@@ -447,6 +444,12 @@ export default function PracticeSessionPage({ params }: PageProps) {
                   ? 'Tap the microphone and read the sentence aloud'
                   : 'Read the sentence aloud to your grown-up'}
         </p>
+
+        {/* What just went wrong with the mic — replaced by, never stacked with,
+            the escalation below. */}
+        {check.micEnabled && !check.micTrouble && (
+          <SpeechErrorNotice message={speechError} />
+        )}
 
         {/* Grown-up scoring — word by word, which is finer-grained than the
             transcript ever was, and the only route on a device the mic fails on. */}

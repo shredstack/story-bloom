@@ -15,6 +15,7 @@ import { Button, Card } from '@/components/ui'
 import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
 import { GrownUpVerdictButtons } from '@/components/games/GrownUpVerdictButtons'
 import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
+import { SpeechErrorNotice } from '@/components/games/SpeechErrorNotice'
 import {
   WordCard,
   SpeechButton,
@@ -286,9 +287,6 @@ export default function PracticePage() {
             &quot;
           </span>
         )}
-        {check.micEnabled && speechError && (
-          <span className="text-red-500">{speechError}</span>
-        )}
       </div>
 
       {/* Controls */}
@@ -313,6 +311,12 @@ export default function PracticePage() {
                   ? 'Tap the microphone and read the word'
                   : 'Read the word out loud to your grown-up'}
         </p>
+
+        {/* What just went wrong with the mic — replaced by, never stacked with,
+            the escalation below. */}
+        {check.micEnabled && !check.micTrouble && (
+          <SpeechErrorNotice message={speechError} />
+        )}
 
         {/* The microphone keeps failing — offer the way out rather than making
             a parent hunt through settings mid-game. */}
