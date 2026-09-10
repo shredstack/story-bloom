@@ -5,8 +5,16 @@
  * a browser, and so a caller can decide when to read `navigator`.
  */
 
-/** Amazon Fire tablet model codes: "KF" + uppercase letters (KFOT … KFTRWI). */
-const FIRE_MODEL = /\bKF[A-Z]{2,}\b/
+/**
+ * Amazon Fire tablet model codes: "KF" + uppercase letters (KFOT … KFTRWI).
+ *
+ * The lookbehind matters. A plain `\b` treats a hyphen as a boundary, so a
+ * model like `SM-KFOO` would read as a Fire tablet and cost that whole session
+ * paid server transcription for nothing. Fire codes appear either standalone
+ * (`; KFTRPWI;`) or after the Build slash (`Build/KFTRWI`), never glued to a
+ * preceding word.
+ */
+const FIRE_MODEL = /(?<![A-Za-z-])KF[A-Z]{2,}\b/
 
 /** Amazon's Chromium fork. Appears as "Silk/109.4.4" or "Silk-Accelerated=true". */
 const SILK = /\bSilk[/-]/

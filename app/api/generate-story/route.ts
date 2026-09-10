@@ -3,6 +3,10 @@ import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
+// Explicit because the illustration path base64-encodes with `Buffer`, which
+// does not exist on the edge runtime. Matches the other AI routes.
+export const runtime = 'nodejs'
+
 interface PhysicalCharacteristics {
   skinTone: string | null
   hairColor: string | null
@@ -150,7 +154,9 @@ export async function POST(request: NextRequest) {
     // logs impossible to trace back to the profile that caused it.
     const missingFields: string[] = []
     if (!childName) missingFields.push('childName')
-    if (!childAge) missingFields.push('childAge')
+    // Missing, not falsy: this block exists to be diagnosable, and reporting a
+    // present-but-zero age as absent is the opposite of that.
+    if (typeof childAge !== 'number' || Number.isNaN(childAge)) missingFields.push('childAge')
     if (!readingLevel) missingFields.push('readingLevel')
     if (!favoriteThings?.length) missingFields.push('favoriteThings')
 

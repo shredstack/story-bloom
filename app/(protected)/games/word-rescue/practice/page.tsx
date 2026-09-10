@@ -345,7 +345,9 @@ export default function WordRescuePracticePage() {
 
       {/* Grown-up scoring — the microphone's alternative, not its decoration. */}
       <div className="flex flex-col items-center gap-4 mt-6">
-        {check.micEnabled && <SpeechErrorNotice message={speech.error} />}
+        {check.micEnabled && !check.micTrouble && (
+          <SpeechErrorNotice message={speech.error} />
+        )}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

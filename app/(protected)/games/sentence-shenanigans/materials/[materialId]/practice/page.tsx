@@ -400,9 +400,6 @@ export default function PracticeSessionPage({ params }: PageProps) {
           </div>
         )}
 
-        {check.micEnabled && speechError && (
-          <span className="text-red-500 text-sm">{speechError}</span>
-        )}
       </div>
 
       {/* Controls */}
@@ -451,7 +448,9 @@ export default function PracticeSessionPage({ params }: PageProps) {
 
         {/* Grown-up scoring — word by word, which is finer-grained than the
             transcript ever was, and the only route on a device the mic fails on. */}
-        {check.micEnabled && <SpeechErrorNotice message={speech.error} />}
+        {check.micEnabled && !check.micTrouble && (
+          <SpeechErrorNotice message={speechError} />
+        )}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

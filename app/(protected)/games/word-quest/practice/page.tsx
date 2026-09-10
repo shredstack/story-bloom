@@ -287,9 +287,6 @@ export default function PracticePage() {
             &quot;
           </span>
         )}
-        {check.micEnabled && speechError && (
-          <span className="text-red-500">{speechError}</span>
-        )}
       </div>
 
       {/* Controls */}
@@ -317,7 +314,9 @@ export default function PracticePage() {
 
         {/* The microphone keeps failing — offer the way out rather than making
             a parent hunt through settings mid-game. */}
-        {check.micEnabled && <SpeechErrorNotice message={speech.error} />}
+        {check.micEnabled && !check.micTrouble && (
+          <SpeechErrorNotice message={speechError} />
+        )}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

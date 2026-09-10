@@ -169,23 +169,32 @@ const GENERATION_TIMEOUT_MS = 180_000
 const SAFE_RETRY_WINDOW_MS = 3_000
 
 const NETWORK_ERROR_MESSAGE =
-  "The connection dropped before the story was ready. This can happen if the app goes to sleep or your connection changes while it's writing. Tap to try again."
+  "The connection dropped before the story was ready. This can happen if the app goes to sleep or your connection changes while it's writing. Tap Generate to try again."
 
 const TIMEOUT_ERROR_MESSAGE =
-  'The story took too long to write and timed out. Tap to try again.'
+  'The story took too long to write and timed out. Tap Generate to try again.'
 
 /**
- * fetch() rejects with a TypeError only when the connection fails before any
- * response headers arrive. Every server-side failure — including a Vercel
- * timeout page — comes back as a real HTTP response instead, so this narrowly
- * means "we never got a reply at all".
+ * A TypeError here means the transport failed rather than the server. Usually
+ * that's fetch() rejecting before any response headers arrived — but it also
+ * covers a connection that drops mid-body, where `response.json()` throws a
+ * TypeError even though the server did (and billed for) the whole job.
+ *
+ * So this alone must never authorise a retry: the SAFE_RETRY_WINDOW_MS elapsed
+ * check is what distinguishes "never reached the server" from "we lost the
+ * answer to work already paid for". Don't relax that guard.
  */
 function isNetworkError(err: unknown): boolean {
   return err instanceof TypeError
 }
 
+/**
+ * `controller.abort()` rejects the fetch with a DOMException named AbortError.
+ * Match on the name alone — a failed `instanceof` would leak the engine's raw
+ * "signal is aborted without reason" text to a parent.
+ */
 function isTimeoutError(err: unknown): boolean {
-  return err instanceof Error && err.name === 'AbortError'
+  return (err as { name?: string } | null)?.name === 'AbortError'
 }
 
 function toParentFacingMessage(err: unknown): string {

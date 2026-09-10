@@ -15,7 +15,8 @@ interface SpeechErrorNoticeProps {
  * didn't register, which is the least actionable thing a mic button can do.
  *
  * This is the transient one. `MicTroubleNotice` is its escalation, after the
- * failures stop looking like bad luck.
+ * failures stop looking like bad luck — and it replaces this notice rather than
+ * stacking with it, so render this one behind `!check.micTrouble`.
  */
 export function SpeechErrorNotice({ message }: SpeechErrorNoticeProps) {
   if (!message) return null

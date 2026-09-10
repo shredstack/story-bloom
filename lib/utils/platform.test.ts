@@ -18,6 +18,15 @@ describe('isFireOS', () => {
     'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
     // A normal Android tablet — has Google services, Web Speech works
     'Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Safari/537.36',
+    // Near miss: a hyphenated model that merely ends in a Fire-shaped token.
+    // A hyphen is a word boundary, so this is exactly what \b alone gets wrong.
+    'Mozilla/5.0 (Linux; Android 13; SM-KFOO) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Safari/537.36',
+    // Near miss: the letters appear mid-token, not as a model code.
+    'Mozilla/5.0 (Linux; Android 13; ABCKFTT) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    // Near miss: "KF" with too few following letters to be a model code.
+    'Mozilla/5.0 (Linux; Android 13; KFX) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+    // Near miss: lowercase silk in a path, not the Silk browser token.
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 silk/tester Chrome/120.0.0.0',
   ]
 
   it.each(FIRE_UAS)('detects Fire OS: %s', (ua) => {
