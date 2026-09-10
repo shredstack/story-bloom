@@ -14,6 +14,7 @@ import { useGuidedReading } from '@/lib/hooks/useGuidedReading'
 import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
 import { GrownUpSentenceScorer } from '@/components/games/GrownUpSentenceScorer'
 import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
+import { SpeechErrorNotice } from '@/components/games/SpeechErrorNotice'
 import { usePets } from '@/lib/hooks/usePets'
 import { Button, Card } from '@/components/ui'
 import { ReadingQuickPanel } from '@/components/reading'
@@ -450,6 +451,7 @@ export default function PracticeSessionPage({ params }: PageProps) {
 
         {/* Grown-up scoring — word by word, which is finer-grained than the
             transcript ever was, and the only route on a device the mic fails on. */}
+        {check.micEnabled && <SpeechErrorNotice message={speech.error} />}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

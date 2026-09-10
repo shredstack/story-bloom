@@ -149,6 +149,51 @@ export function useStories(childId: string | undefined) {
   }
 }
 
+/**
+ * Generating a story is one long request: Claude writes the text, then
+ * gpt-image-1 draws the illustration, then it uploads to storage. That routinely
+ * takes 25-90s, so the browser holds a connection open the whole time. On a phone
+ * that connection is fragile — locking the screen, backgrounding the app, or a
+ * wifi/cellular handoff kills it. The ceiling below just makes that failure
+ * arrive cleanly instead of hanging on a spinner forever.
+ */
+const GENERATION_TIMEOUT_MS = 180_000
+
+/**
+ * A network failure this fast means the request never reached the server, so no
+ * story was written and no API spend happened — retrying is free. Past this
+ * point the server may well have finished the work, so we surface the error and
+ * let the parent decide rather than silently paying for a second story that
+ * nobody will ever see.
+ */
+const SAFE_RETRY_WINDOW_MS = 3_000
+
+const NETWORK_ERROR_MESSAGE =
+  "The connection dropped before the story was ready. This can happen if the app goes to sleep or your connection changes while it's writing. Tap to try again."
+
+const TIMEOUT_ERROR_MESSAGE =
+  'The story took too long to write and timed out. Tap to try again.'
+
+/**
+ * fetch() rejects with a TypeError only when the connection fails before any
+ * response headers arrive. Every server-side failure — including a Vercel
+ * timeout page — comes back as a real HTTP response instead, so this narrowly
+ * means "we never got a reply at all".
+ */
+function isNetworkError(err: unknown): boolean {
+  return err instanceof TypeError
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError'
+}
+
+function toParentFacingMessage(err: unknown): string {
+  if (isTimeoutError(err)) return TIMEOUT_ERROR_MESSAGE
+  if (isNetworkError(err)) return NETWORK_ERROR_MESSAGE
+  return err instanceof Error ? err.message : 'An error occurred'
+}
+
 export function useGenerateStory() {
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -166,44 +211,71 @@ export function useGenerateStory() {
     setGenerating(true)
     setError(null)
 
-    try {
-      const response = await fetch('/api/generate-story', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          childName,
-          childAge,
-          readingLevel,
-          favoriteThings,
-          parentSummary,
-          customPrompt,
-          sourceIllustration,
-          physicalCharacteristics,
-        }),
-      })
+    const payload = {
+      childName,
+      childAge,
+      readingLevel,
+      favoriteThings,
+      parentSummary,
+      customPrompt,
+      sourceIllustration,
+      physicalCharacteristics,
+    }
 
-      const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
-        console.error('API returned non-JSON response:', {
-          status: response.status,
-          contentType,
-          url: response.url,
+    const attempt = async (): Promise<StoryGenerationResponse> => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS)
+
+      try {
+        const response = await fetch('/api/generate-story', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
         })
-        throw new Error('LLM API failure - please try again!')
-      }
 
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error('API error response:', errorData)
-        throw new Error(errorData.error || 'Failed to generate story')
-      }
+        const contentType = response.headers.get('content-type')
+        if (!contentType || !contentType.includes('application/json')) {
+          console.error('API returned non-JSON response:', {
+            status: response.status,
+            contentType,
+            url: response.url,
+          })
+          throw new Error('LLM API failure - please try again!')
+        }
 
-      const data: StoryGenerationResponse = await response.json()
-      return data
+        if (!response.ok) {
+          const errorData = await response.json()
+          console.error('API error response:', errorData)
+          throw new Error(errorData.error || 'Failed to generate story')
+        }
+
+        return (await response.json()) as StoryGenerationResponse
+      } finally {
+        clearTimeout(timeoutId)
+      }
+    }
+
+    const startedAt = Date.now()
+
+    try {
+      return await attempt()
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred'
-      console.error('Story generation failed:', errorMessage)
-      setError(errorMessage)
+      const elapsed = Date.now() - startedAt
+      console.error('Story generation failed:', err)
+
+      if (isNetworkError(err) && elapsed < SAFE_RETRY_WINDOW_MS) {
+        console.warn(`Request failed after ${elapsed}ms without reaching the server; retrying once.`)
+        try {
+          return await attempt()
+        } catch (retryErr) {
+          console.error('Story generation retry failed:', retryErr)
+          setError(toParentFacingMessage(retryErr))
+          return null
+        }
+      }
+
+      setError(toParentFacingMessage(err))
       return null
     } finally {
       setGenerating(false)

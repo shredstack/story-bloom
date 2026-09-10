@@ -15,6 +15,7 @@ import { Button, Card } from '@/components/ui'
 import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
 import { GrownUpVerdictButtons } from '@/components/games/GrownUpVerdictButtons'
 import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
+import { SpeechErrorNotice } from '@/components/games/SpeechErrorNotice'
 import {
   WordCard,
   SpeechButton,
@@ -316,6 +317,7 @@ export default function PracticePage() {
 
         {/* The microphone keeps failing — offer the way out rather than making
             a parent hunt through settings mid-game. */}
+        {check.micEnabled && <SpeechErrorNotice message={speech.error} />}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}

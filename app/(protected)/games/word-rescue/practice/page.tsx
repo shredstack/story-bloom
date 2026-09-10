@@ -13,6 +13,7 @@ import { useReadingCheck } from '@/lib/hooks/useReadingCheck'
 import { GrownUpCheckBar } from '@/components/games/GrownUpCheckBar'
 import { GrownUpVerdictButtons } from '@/components/games/GrownUpVerdictButtons'
 import { MicTroubleNotice } from '@/components/games/MicTroubleNotice'
+import { SpeechErrorNotice } from '@/components/games/SpeechErrorNotice'
 import { BuddySelector } from '../components/BuddySelector'
 import { BuddyEncouragement } from '../components/BuddyEncouragement'
 import { RescueCard } from '../components/RescueCard'
@@ -344,6 +345,7 @@ export default function WordRescuePracticePage() {
 
       {/* Grown-up scoring — the microphone's alternative, not its decoration. */}
       <div className="flex flex-col items-center gap-4 mt-6">
+        {check.micEnabled && <SpeechErrorNotice message={speech.error} />}
         {check.micTrouble && (
           <MicTroubleNotice
             onSwitch={check.switchToGrownUp}
